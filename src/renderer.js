@@ -107,14 +107,13 @@ async function init() {
     if (up.updateAvailable) {
         upd_url = up.url;
         upd_ver = up.version;
-        document.getElementById('updStatus').innerHTML = '<span style="color:var(--good); cursor:pointer;" onclick="s.openExternal(\'' + up.url + '\')">Download ' + up.version + '</span>';
+        document.getElementById('updStatus').innerHTML = '<span style="color:var(--good); cursor:pointer;" onclick="download_update()">Download ' + up.version + '</span>';
 
         document.getElementById('vBadge').style.cursor = 'pointer';
         document.getElementById('vBadge').style.borderColor = 'var(--good)';
         document.getElementById('vBadge').style.color = 'var(--text-main)';
         document.getElementById('vBadge').style.background = 'rgba(74, 222, 128, 0.2)';
 
-        //-- if not ingored, then we show
         if (c_config.ignoredUpdate !== up.version) {
             document.getElementById('updModalDesc').innerHTML = `Version <b>${up.version}</b> is available!`;
             document.getElementById('updateModal').style.display = 'flex';
@@ -130,9 +129,23 @@ async function ignore_update() {
     document.getElementById('updateModal').style.display = 'none';
 }
 
-function download_update() {
-    if (s && upd_url) s.openExternal(upd_url);
+async function download_update() {
+    if (!s) return;
     document.getElementById('updateModal').style.display = 'none';
+    document.getElementById('vBadge').innerText = 'Downloading...';
+    const status = document.getElementById('updStatus');
+    status.innerText = 'Downloading... 0%';
+
+    //* progress comes via onUpdateStatus which is already set in init()
+    const res = await s.downloadLatest();
+    if (res && res.success) {
+        status.innerText = 'Installing...';
+    } else {
+        status.innerText = `Failed: ${res?.message || 'unknown'}`;
+        if (upd_url) {
+            status.innerHTML += ` | <a href="#" onclick="s.openExternal('${upd_url}'); return false;">Open in browser</a>`;
+        }
+    }
 }
 
 function load_settings_ui() {
@@ -141,6 +154,7 @@ function load_settings_ui() {
     document.getElementById('chkMinimizeClose').checked = c_config.minimizeClose || false;
     document.getElementById('chkPreserveSettings').checked = c_config.preserveSettings || false;
     document.getElementById('chkPreserveFastflags').checked = c_config.preserveFastflags || false;
+    document.getElementById('chkDeleteStudio').checked = c_config.deleteStudio || false;
     toggle_set_weao();
     toggle_spoof_mode();
     if (c_config.weblauncherDir) {
@@ -187,6 +201,7 @@ async function save_settings() {
     c_config.minimizeClose = document.getElementById('chkMinimizeClose').checked;
     c_config.preserveSettings = document.getElementById('chkPreserveSettings').checked;
     c_config.preserveFastflags = document.getElementById('chkPreserveFastflags').checked;
+    c_config.deleteStudio = document.getElementById('chkDeleteStudio')?.checked || false;
 
     if (c_config.launcherType === 'weao' && !c_config.weblauncherDir) {
         alert("Please select your WEAO Web Launcher directory.");
@@ -206,7 +221,7 @@ async function check_upd_manual() {
 
     const up = await s.checkUpdates();
     if (up.updateAvailable) {
-        document.getElementById('updStatus').innerHTML = `<span style="color:var(--good); cursor:pointer;" onclick="s.openExternal('${up.url}')">Download ${up.version}</span>`;
+            document.getElementById('updStatus').innerHTML = `<span style="color:var(--good); cursor:pointer;" onclick="download_update()">Download ${up.version}</span>`;
         btn.innerText = 'Update Available!';
         btn.style.borderColor = 'var(--good)';
         btn.style.color = 'var(--text-main)';
@@ -217,6 +232,21 @@ async function check_upd_manual() {
         setTimeout(() => {
             if (btn.innerText === 'Up to date!') btn.innerText = originalText;
         }, 2000);
+    }
+}
+
+async function install_latest() {
+    if (!s) return;
+    const btn = document.getElementById('btnInstallLatest');
+    const status = document.getElementById('updStatus');
+    btn.disabled = true;
+    status.innerText = 'Downloading...';
+    const res = await s.downloadLatest();
+    if (res && res.success) {
+        status.innerText = 'Installer launched, exiting...';
+    } else {
+        status.innerText = `Failed: ${res?.message || 'unknown'}`;
+        btn.disabled = false;
     }
 }
 
@@ -258,6 +288,13 @@ if (s) {
             document.getElementById('loaderRing').setAttribute('stroke', 'var(--bad)');
             document.getElementById('botStatus').innerText = 'Error';
             setTimeout(() => show_view('home'), 3000);
+        }
+    });
+
+    s.onUpdateStatus((data) => {
+        if (data.percentage !== undefined) {
+            const status = document.getElementById('updStatus');
+            status.innerText = `Downloading... ${data.percentage}%`;
         }
     });
 }
@@ -535,6 +572,7 @@ function update_mac_tooltip() {
 init();
 
 // ---- custom color picker ----
+//! thanks seven for the w ai slop
 (function () {
     const popover = document.getElementById('colorPickr');
     const canvas = document.getElementById('cpCanvas');
@@ -739,3 +777,22 @@ init();
         });
     };
 })();
+
+
+// trigger_bao_confetti(); // yay or nay?
+s.showToast('Welcome to RblxSwap!', 'Thanks for using my tool, you\'re epic :bao:', [
+    {
+        label: ':bao:',
+        type: 'default',
+        actionKey: 'fun:bao_confetti'
+    }
+], 5000);
+
+// :eyes:
+s.showToast('Do you want free alts?', 'We are soon launching a free to use alt generator for everyone!\nJoin our Discord to get notified & access it as soon as it\'s out', [
+    {
+        label: 'Join Discord for Free Alts',
+        type: 'primary',
+        actionKey: 'open:weao-discord'
+    }
+], 10000);

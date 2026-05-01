@@ -125,10 +125,14 @@
             <!-- after/post clean -->
             <div id="view_post" class="view">
                 <h1 style="color: var(--good);">Sweep Complete!</h1>
-                <p style="padding: 0 20px;">Would you like to spoof your MAC address(es) for extra safety? This may
+                <p style="padding: 0 12px;">Would you like to spoof your MAC address(es) for extra safety? This may
                     disrupt network temporarily.</p>
-                <p style="font-size: 0.75rem; color: var(--text-dim); margin-top: 12px;">Tip: Remember to clear your
-                    roblox.com cookies too!</p>
+                <p style="font-size: 0.75rem; color: var(--text-dim); margin-top: 2px;">Tip: Remember to clear your
+                    roblox.com cookies<br/>(or use an incognito) and preferably a VPN!</p>
+                <!-- ad placement -->
+                <p style="font-size: 0.60rem; font-weight: 600; color: var(--text-dim); margin-top: 12px;">
+                    Do you want free throwaway alts to safely use for exploits?<br/>Join the <a href="https://discord.gg/weaoxyz" target="_blank" style="color: var(--good); text-decoration: underline;">WEAO Discord</a> and use our new alt generator, free for all!
+                </p>
 
                 <div style="display:flex; justify-content:center; gap: 10px;">
                     <button onclick="hide_self()">No, Hide</button>
@@ -147,10 +151,16 @@
 
                 <div class="fgrid">
                     <label>Launcher Type</label>
-                    <label class="radio-opt"><input type="radio" name="setType" value="default"
-                            onchange="toggle_set_weao()"> Default / Other</label>
-                    <label class="radio-opt"><input type="radio" name="setType" value="weao"
-                            onchange="toggle_set_weao()"> WEAO RDD</label>
+                    <label class="custom-check-wrap radio-opt">
+                        <input type="radio" class="custom-check" name="setType" value="default" onchange="toggle_set_weao()">
+                        <span class="custom-check"></span>
+                        <span>Default / Other</span>
+                    </label>
+                    <label class="custom-check-wrap radio-opt">
+                        <input type="radio" class="custom-check" name="setType" value="weao" onchange="toggle_set_weao()">
+                        <span class="custom-check"></span>
+                        <span>WEAO RDD</span>
+                    </label>
 
                     <div id="setWeaoOpt"
                         style="display:none; margin-top:8px; padding-top:8px; border-top:1px solid rgba(255,255,255,0.05);">
@@ -167,12 +177,16 @@
 
                 <div class="fgrid">
                     <label>Spoofing Mode</label>
-                    <label class="radio-opt"><input type="radio" name="spoofMode" value="simple"
-                            onchange="toggle_spoof_mode()"> Simple <span
-                            style="font-size:0.6rem; color:#888;">(Auto-Spoof All)</span></label>
-                    <label class="radio-opt"><input type="radio" name="spoofMode" value="advanced"
-                            onchange="toggle_spoof_mode()"> Advanced <span style="font-size:0.6rem; color:#888;">(Custom
-                            Mac, DHCP)</span></label>
+                    <label class="custom-check-wrap radio-opt">
+                        <input type="radio" class="custom-check" name="spoofMode" value="simple" onchange="toggle_spoof_mode()">
+                        <span class="custom-check"></span>
+                        <span>Simple <span style="font-size:0.6rem; color:#888;">(Auto-Spoof All)</span></span>
+                    </label>
+                    <label class="custom-check-wrap radio-opt">
+                        <input type="radio" class="custom-check" name="spoofMode" value="advanced" onchange="toggle_spoof_mode()">
+                        <span class="custom-check"></span>
+                        <span>Advanced <span style="font-size:0.6rem; color:#888;">(Custom Mac, DHCP)</span></span>
+                    </label>
                 </div>
 
                 <div class="fgrid">
@@ -295,11 +309,24 @@
                 </div>
 
                 <div class="fgrid">
+                    <label>Studio Cleanup</label>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                        <label style="margin:0; font-size:0.75rem; color:#aaa; display:flex; align-items:center; gap:4px;" data-tooltip="If enabled, rblxswap may delete Roblox Studio version folders during cleanup.">Delete Roblox Studio folders</label>
+                        <label class="switch">
+                            <input type="checkbox" id="chkDeleteStudio">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="fgrid">
                     <label>Updates</label>
                     <div style="display:flex; justify-content:space-between; align-items:center;">
                         <span style="font-size:0.8rem; color:#aaa;" id="updStatus">Checking...</span>
-                        <button type="button" style="padding:4px 8px; font-size:0.7rem;"
-                            onclick="check_upd_manual()">Check Now</button>
+                        <div style="display:flex; gap:8px;">
+                            <button type="button" style="padding:4px 8px; font-size:0.7rem;" onclick="check_upd_manual()">Check Now</button>
+                            <button type="button" id="btnInstallLatest" style="padding:4px 8px; font-size:0.7rem;" onclick="install_latest()">Install Latest</button>
+                        </div>
                     </div>
                 </div>
             </div>
