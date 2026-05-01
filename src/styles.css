@@ -13,7 +13,8 @@
 }
 
 html {
-    background: transparent !important;
+    /* background: transparent !important; */
+    background: var(--bg-base);
 }
 
 body {
@@ -21,7 +22,7 @@ body {
     margin: 0;
     height: 100vh;
     width: 100vw;
-    background: var(--bg-base);
+    /* background: var(--bg-base); */
     -webkit-app-region: drag;
     overflow: hidden;
 }
@@ -411,10 +412,6 @@ input:checked+.slider:before {
     color: #ccc;
 }
 
-.radio-opt input {
-    accent-color: var(--text-main);
-}
-
 .theme-row {
     display: flex;
     align-items: center;
@@ -591,7 +588,7 @@ input:checked+.slider:before {
     -webkit-app-region: no-drag;
 }
 
-.custom-check {
+input.custom-check {
     position: absolute;
     opacity: 0;
     width: 0;
@@ -599,7 +596,7 @@ input:checked+.slider:before {
     pointer-events: none;
 }
 
-.custom-check {
+span.custom-check {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -612,7 +609,7 @@ input:checked+.slider:before {
     flex-shrink: 0;
 }
 
-.custom-check::after {
+span.custom-check::after {
     content: '';
     display: block;
     width: 5px;
@@ -624,53 +621,17 @@ input:checked+.slider:before {
     transition: border-color 0.15s;
 }
 
-.custom-check:checked+.custom-check {
+input.custom-check:checked+span.custom-check {
     background: rgba(255, 255, 255, 0.12);
     border-color: rgba(255, 255, 255, 0.28);
 }
 
-.custom-check:checked+.custom-check::after {
+input.custom-check:checked+span.custom-check::after {
     border-color: var(--good);
 }
 
-.custom-check-wrap:hover .custom-check {
+.custom-check-wrap:hover span.custom-check {
     border-color: rgba(255, 255, 255, 0.2);
-}
-
-.radio-opt input[type="radio"] {
-    appearance: none;
-    -webkit-appearance: none;
-    width: 14px;
-    height: 14px;
-    border-radius: 50%;
-    background: var(--bg-darker);
-    border: 1px solid var(--border);
-    flex-shrink: 0;
-    cursor: pointer;
-    transition: background 0.15s, border-color 0.15s;
-    position: relative;
-}
-
-.radio-opt input[type="radio"]::after {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--good);
-    transform: translate(-50%, -50%) scale(0);
-    transition: transform 0.15s;
-}
-
-.radio-opt input[type="radio"]:checked {
-    background: rgba(255, 255, 255, 0.1);
-    border-color: rgba(255, 255, 255, 0.28);
-}
-
-.radio-opt input[type="radio"]:checked::after {
-    transform: translate(-50%, -50%) scale(1);
 }
 
 /* confirmation modal */

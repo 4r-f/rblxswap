@@ -1,8 +1,8 @@
-const APP_VERSION = "v0.1.7"; //? also update in package.json, and in the github release body/title for update checking to work (or else it will just assume any release is new lol)
+const APP_VERSION = "v0.2.0"; //? also update in package.json, and in the github release body/title for update checking to work (or else it will just assume any release is new lol)
 
 ///////////////
 
-const { app, BrowserWindow, nativeTheme, ipcMain, dialog, Tray, Menu, Notification, screen } = require('electron');
+const { app, BrowserWindow, nativeTheme, ipcMain, dialog, Tray, Menu, screen } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -40,6 +40,7 @@ function getConfig() {
 		minimizeClose: true,
 		preserveSettings: true,
 		preserveFastflags: false,
+		deleteStudio: false,
 		theme: {
 			"bg-base": "#101010",
 			"bg-accent": "#191919",
@@ -337,8 +338,8 @@ async function terminateRobloxProcesses() {
 }
 
 async function cleanLauncherInstallations(localAppData) {
-	const launchers = ['Fishstrap', 'Bloxstrap', 'Voidstrap']; //! prolly need to add support for more
-	const launcherSubFolders = ['Versions', 'Logs', 'Downloads'];
+	const launchers = ['Fishstrap', 'Bloxstrap', 'Voidstrap'];
+	const launcherSubFolders = ['Logs', 'Downloads']; //? now we handle versions separately
 	let detected = false;
 
 	for (const launcherName of launchers) {
@@ -448,7 +449,7 @@ async function cleanTempCaches() {
 			await removeDirectory(path.join(tempRoot, match.name), `Temp ${match.name}`);
 		}
 	} catch (error) {
-		emitLog('warn', `Unable to enumerate thru temp dir: ${error.message}`);
+		emitLog('warn', `Unable to clear temp: ${error.message}`);
 	}
 }
 
@@ -506,7 +507,7 @@ async function cleanWebLauncher(targetDir) {
 	}
 }
 
-async function runBypassWorkflow(weblauncherDir) {
+async function runCleaner(weblauncherDir) {
 	const localAppData = process.env.LOCALAPPDATA;
 	const appData = process.env.APPDATA;
 	if (!localAppData) { // you alraedy kno
@@ -575,9 +576,105 @@ async function runBypassWorkflow(weblauncherDir) {
 	}
 
 	emitStatus('purging Roblox install', 35);
-	await removeDirectory(path.join(localAppData, 'Roblox'), 'Roblox install folder');
-        if (process.env.ProgramFiles) await removeDirectory(path.join(process.env.ProgramFiles, 'Roblox'), 'Program Files Roblox');
-        if (process.env['ProgramFiles(x86)']) await removeDirectory(path.join(process.env['ProgramFiles(x86)'], 'Roblox'), 'Program Files (x86) Roblox');
+	const targetLocalRoblox = path.join(localAppData, 'Roblox');
+	if (!config.deleteStudio) {
+		const versionsPath = path.join(targetLocalRoblox, 'Versions');
+		if (await pathExists(versionsPath)) {
+			try {
+				const entries = await fsPromises.readdir(versionsPath, { withFileTypes: true });
+				for (const entry of entries) {
+					if (entry.isDirectory()) {
+						const vf = path.join(versionsPath, entry.name);
+						const hasStudio = await pathExists(path.join(vf, 'RobloxStudioBeta.exe'));
+						if (hasStudio) { //? dont delete studio!
+							emitLog('info', `Skipping Studio dir ${entry.name}`);
+						} else {
+							await removeDirectory(vf, `Roblox Version ${entry.name}`);
+						}
+					}
+				}
+				
+				await removeDirectory(path.join(targetLocalRoblox, 'Downloads'), 'Roblox Downloads');
+				await removeDirectory(path.join(targetLocalRoblox, 'Logs'), 'Roblox Logs');
+			} catch (e) {}
+		}
+	} else { //? delete studio, user doesnt care
+		await removeDirectory(targetLocalRoblox, 'Roblox install folder');
+	}
+
+	const launcherRootsToCleanStudioFor = [
+		path.join(localAppData, 'Bloxstrap', 'Versions'),
+		path.join(localAppData, 'Fishstrap', 'Versions'),
+		path.join(localAppData, 'Voidstrap', 'Versions')
+	];
+	for (const lbRoot of launcherRootsToCleanStudioFor) {
+		if (await pathExists(lbRoot)) {
+			if (!config.deleteStudio) {
+				try {
+					const entries = await fsPromises.readdir(lbRoot, { withFileTypes: true });
+					for (const entry of entries) {
+						if (entry.isDirectory()) {
+							const vf = path.join(lbRoot, entry.name);
+							const hasStudio = await pathExists(path.join(vf, 'RobloxStudioBeta.exe'));
+							if (hasStudio) {
+								emitLog('info', `Skipping Studio install in ${lbRoot}`);
+							} else {
+								await removeDirectory(vf, `Launcher Version ${entry.name}`);
+							}
+						}
+					}
+				} catch (e) {}
+			} else {
+				await removeDirectory(lbRoot, 'Launcher Versions');
+			}
+		}
+	}
+
+	if (process.env.ProgramFiles) {
+		const targetPF = path.join(process.env.ProgramFiles, 'Roblox');
+		if (!config.deleteStudio) {
+			const versionsPath = path.join(targetPF, 'Versions');
+			if (await pathExists(versionsPath)) {
+				try {
+					const entries = await fsPromises.readdir(versionsPath, { withFileTypes: true });
+					for (const entry of entries) {
+						if (entry.isDirectory()) {
+							const vf = path.join(versionsPath, entry.name);
+							const hasStudio = await pathExists(path.join(vf, 'RobloxStudioBeta.exe'));
+							if (!hasStudio) {
+								await removeDirectory(vf, `PF Version ${entry.name}`);
+							}
+						}
+					}
+				} catch (e) {}
+			}
+		} else {
+			await removeDirectory(targetPF, 'Program Files Roblox');
+		}
+	}
+
+	if (process.env['ProgramFiles(x86)']) {
+		const targetPFx = path.join(process.env['ProgramFiles(x86)'], 'Roblox');
+		if (!config.deleteStudio) {
+			const versionsPath = path.join(targetPFx, 'Versions');
+			if (await pathExists(versionsPath)) {
+				try {
+					const entries = await fsPromises.readdir(versionsPath, { withFileTypes: true });
+					for (const entry of entries) {
+						if (entry.isDirectory()) {
+							const vf = path.join(versionsPath, entry.name);
+							const hasStudio = await pathExists(path.join(vf, 'RobloxStudioBeta.exe'));
+							if (!hasStudio) {
+								await removeDirectory(vf, `PFx86 Version ${entry.name}`);
+							}
+						}
+					}
+				} catch (e) {}
+			}
+		} else {
+			await removeDirectory(targetPFx, 'Program Files (x86) Roblox');
+		}
+	}
 
 
 	emitStatus('cleaning Roaming cache', 45);
@@ -607,11 +704,43 @@ async function runBypassWorkflow(weblauncherDir) {
 	emitLog('success', 'Bypassed np thx');
 }
 
+const toastActionRegistry = new Map();
+function registerToastAction(key, fn) { toastActionRegistry.set(key, fn); }
 async function showToast(title, message, buttons, timespan = 15000, callback = null) {
 	const toastId = `toast_${Date.now()}_${++toastIdCounter}`;
 	const logoUrl = getToastLogoDataUrl();
 	const safeTitle = escapeHtml(title); //! you never know am i rite ;-;
 	const safeMessage = escapeHtml(message);
+
+	let normalizedButtons = null; //? nomralized format for btns
+	if (buttons === true) {
+		//? legacy behavior
+		normalizedButtons = [
+			{ label: 'Yes', type: 'yes', action: null, close: true },
+			{ label: 'No', type: 'default', action: null, close: true },
+		]
+	} else if (Array.isArray(buttons) && buttons.length > 0) {
+		// console.log('normalizing buttons:', JSON.stringify(buttons));
+		normalizedButtons = buttons.map((btn, index) => ({
+			label:     btn.label     ?? 'OK',
+			type:      btn.type      ?? 'default',  // 'yes' | 'danger' | 'default'
+			action:    btn.action    ?? null,       // for direct calls (not ipc cuz ipc is tart)
+			actionKey: btn.actionKey ?? null,       // for renderer ipc calls yay
+			close:     btn.close     !== false      // default = true
+		}));
+	}
+
+	const buttonsJson = normalizedButtons
+		? escapeHtml(JSON.stringify(normalizedButtons))
+		: null;
+
+	const buttonHTML = normalizedButtons
+		? `<div class="buttons">
+			${normalizedButtons.map((btn, i) =>
+				`<button class="${btn.type}" data-index="${i}" onclick="window.toastActions.click('${toastId}', ${i})">${escapeHtml(btn.label)}</button>`
+			).join('')}
+		</div>
+		` : '';
 
 	const toastHTML = `<!DOCTYPE html>
 <html>
@@ -647,11 +776,19 @@ async function showToast(title, message, buttons, timespan = 15000, callback = n
 		.head img { width: 18px; height: 18px; border-radius: 4px; object-fit: cover; }
 		h2 { font-size: 0.95rem; }
 		p { font-size: 0.78rem; color: #b3b3b3; margin-bottom: 12px; line-height: 1.4; white-space: pre-wrap; }
+		
 		.buttons { display: flex; gap: 8px; }
 		button { flex: 1; padding: 8px 12px; font-size: 0.75rem; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; cursor: pointer; transition: all 0.2s; background: rgba(255,255,255,0.08); color: #f0f0f0; font-family: inherit; }
 		button:hover { background: rgba(255,255,255,0.15); }
+		
 		button.yes { background: rgba(74, 222, 128, 0.2); border-color: rgba(74, 222, 128, 0.4); }
 		button.yes:hover { background: rgba(74, 222, 128, 0.3); }
+		button.danger { background: rgba(248, 113, 113, 0.2); border-color: rgba(248, 113, 113, 0.4); }
+		button.danger:hover { background: rgba(248, 113, 113, 0.3); }
+		button.primary { background: rgba(59, 246, 131, 0.2); border-color: rgba(59, 246, 131, 0.4); }
+		button.primary:hover { background: rgba(59, 246, 131, 0.3); }
+		button.warning { background: rgba(245, 158, 11, 0.2); border-color: rgba(245, 158, 11, 0.4); }
+		button.warning:hover { background: rgba(245, 158, 11, 0.3); }
 	</style>
 </head>
 <body>
@@ -661,10 +798,7 @@ async function showToast(title, message, buttons, timespan = 15000, callback = n
 			<h2>${safeTitle}</h2>
 		</div>
 		<p>${safeMessage}</p>
-		${buttons ? `<div class="buttons">
-			<button class="yes" onclick="window.toastActions.yes('${toastId}')">Yes</button>
-			<button onclick="window.toastActions.no('${toastId}')">No</button>
-		</div>` : ''}
+		${buttonHTML}
 	</div>
 </body>
 </html>`;
@@ -696,6 +830,7 @@ async function showToast(title, message, buttons, timespan = 15000, callback = n
 		height: 96,
 		timer: null,
 		callback,
+		buttons: normalizedButtons,
 		closing: false
 	};
 	toastWindows.set(toastId, meta);
@@ -736,23 +871,58 @@ async function showToast(title, message, buttons, timespan = 15000, callback = n
 	return toastId;
 }
 
-function handleToastAction(action, toastId) {
-	if (action === 'yes') {
-		mainWindow.show();
-		mainWindow.focus();
-		mainWindow.webContents.executeJavaScript('show_view("home")');
-	}
-
+function handleToastAction(action, toastId, buttonIndex) {
 	const meta = toastWindows.get(toastId);
-	if (meta && typeof meta.callback === 'function') {
-		try { meta.callback(action); } catch (error) {}
-	}
+	if (!meta) return;
 
-	closeToastById(toastId, true);
+	if (action === 'click' && meta.buttons && buttonIndex !== null) {
+		const btn = meta.buttons[buttonIndex];
+		if (btn) {
+			//* try registry action first, then inline function
+			const fn = btn.actionKey
+				? toastActionRegistry.get(btn.actionKey)
+				: btn.action;
+			if (typeof fn === 'function') {
+				try { fn(); } catch (e) {}
+			} else if (typeof meta.callback === 'function') {
+				try { meta.callback(buttonIndex === 0); } catch (e) {}
+			}
+			if (btn.close !== false) closeToastById(toastId, true);
+		}
+	} else if (action === 'yes' || action === 'no') {
+		//? legacy
+		if (action === 'yes') {
+			mainWindow.show();
+			mainWindow.focus();
+			mainWindow.webContents.executeJavaScript('show_view("home")');
+		}
+
+		if (meta && typeof meta.callback === 'function') {
+			try { meta.callback(action === 'yes'); } catch (error) {}
+		}
+
+		closeToastById(toastId, true);
+	}
 }
 
 app.whenReady().then(() => {
 	createWindow();
+
+	//*------
+	registerToastAction('open:weao-discord', () => {
+		require('electron').shell.openExternal('https://discord.gg/weaoxyz');
+	});
+	registerToastAction('open:main-window', () => {
+		mainWindow?.show();
+		mainWindow?.focus();
+		mainWindow?.webContents.executeJavaScript('show_view("home")');
+	});
+	registerToastAction('fun:bao_confetti', () => {
+		mainWindow?.webContents.executeJavaScript(`(() => {
+			trigger_bao_confetti();
+		})()`);
+	});
+	//*------
 
 	tray = new Tray(path.join(__dirname, 'icon.ico'));
 	const contextMenu = Menu.buildFromTemplate([
@@ -795,6 +965,9 @@ app.whenReady().then(() => {
 });
 
 //app.on('window-all-closed', () => {});
+ipcMain.handle('show-toast', (e, { title, message, buttons, timespan }) => {
+	return showToast(title, message, buttons, timespan);
+});
 
 ipcMain.handle('select-directory', async () => {
 	const result = await dialog.showOpenDialog(mainWindow, {
@@ -863,13 +1036,247 @@ ipcMain.handle('check-updates', async () => {
 	});
 });
 
+async function downloadFileToTemp(url, sendProgress) {
+	return new Promise((resolve, reject) => {
+		const tmp = path.join(os.tmpdir(), `rblxswap_update_${Date.now()}.exe`);
+		const opts = new URL(url);
+		const req = https.get({ hostname: opts.hostname, path: opts.pathname + (opts.search || ''), headers: { 'User-Agent': 'rblxswap-updater' } }, (res) => {
+			if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+				resolve(downloadFileToTemp(res.headers.location, sendProgress));
+				return;
+			}
+			if (res.statusCode !== 200) {
+				reject(new Error('Download failed: ' + res.statusCode));
+				return;
+			}
+			
+			const totalBytes = parseInt(res.headers['content-length'], 10) || 0;
+			let downloadedBytes = 0;
+			
+			res.on('data', (chunk) => {
+				downloadedBytes += chunk.length;
+				if (sendProgress && totalBytes > 0) {
+					const pct = Math.round((downloadedBytes / totalBytes) * 100);
+					sendProgress({ percentage: pct, downloaded: downloadedBytes, total: totalBytes });
+				}
+			});
+
+			const file = fs.createWriteStream(tmp);
+			res.pipe(file);
+			file.on('finish', () => file.close(() => resolve(tmp)));
+			file.on('error', (err) => reject(err));
+		});
+		req.on('error', (err) => reject(err));
+	});
+}
+
+function psEscape(str) {
+	return String(str).replace(/'/g, "''");
+}
+
+// function spawnDetached(tempPath, targetExe) {
+// 	//* copy to a second temp location first so the source file stays valid
+// 	//* then wait for the original to be released, replace it, and relaunch
+// 	const ps = `
+// 		try {
+// 			$src = '${psEscape(tempPath)}';
+// 			$dst = '${psEscape(targetExe)}';
+// 			$attempts = 0;
+// 			while ($true) {
+// 				try {
+// 					# fails === still locked
+// 					$stream = [System.IO.File]::Open($dst, 'Open', 'ReadWrite', 'None')
+// 					$stream.Close()
+// 					$stream.Dispose()
+// 					# file !== locked, safe to replace
+// 					Copy-Item -Path $src -Destination $dst -Force -ErrorAction Stop
+// 					Remove-Item -Path $src -Force -ErrorAction SilentlyContinue
+// 					Start-Process -FilePath $dst
+// 					break
+// 				} catch {
+// 					Start-Sleep -Milliseconds 300
+// 					$attempts++
+// 					if ($attempts -ge 60) {
+// 						# gave up waiting, just try to launch whatever is there :/
+// 						Remove-Item -Path $src -Force -ErrorAction SilentlyContinue
+// 						Start-Process -FilePath $dst
+// 						break
+// 					}
+// 				}
+// 			}
+// 		} catch {
+// 			Start-Process -FilePath '${psEscape(targetExe)}'
+// 		}
+// 	`;
+
+// 	const child = require('child_process').spawn(
+// 		'powershell.exe',
+// 		['-NoProfile', '-WindowStyle', 'Hidden', '-Command', ps],
+// 		{ detached: true, windowsHide: true, stdio: 'ignore' }
+// 	);
+// 	try { child.unref(); } catch (e) {}
+// }
+
+function spawnDetached(tempPath) {
+	//* this function genuinely making my eyes bleed
+	//* anyways
+
+	const targetExe = process.env.PORTABLE_EXECUTABLE_FILE || process.execPath;
+	const exeName = path.basename(targetExe);
+	const scriptPath = path.join(os.tmpdir(), 'rblxswap_updater.ps1');
+	const batPath = path.join(os.tmpdir(), 'rblxswap_updater.bat');
+
+	const script = `
+$host.UI.RawUI.WindowTitle = "rblxswap updater"
+$host.UI.RawUI.BackgroundColor = "Black"
+$host.UI.RawUI.ForegroundColor = "White"
+Clear-Host
+
+Write-Host ""
+Write-Host "  ================================" -ForegroundColor DarkGray
+Write-Host "   rblxswap update helper :bao:" -ForegroundColor White
+Write-Host "  ================================" -ForegroundColor DarkGray
+Write-Host ""
+
+$src = '${tempPath.replace(/\\/g, '\\\\')}'
+$dst = '${targetExe.replace(/\\/g, '\\\\')}'
+
+Write-Host "  Waiting for rblxswap to close..." -ForegroundColor Gray
+
+$attempts = 0
+$updated = $false
+while ($true) {
+	try {
+		$stream = [System.IO.File]::Open($dst, 'Open', 'ReadWrite', 'None')
+		$stream.Close()
+		$stream.Dispose()
+		Write-Host "  Applying update..." -ForegroundColor Yellow
+		Copy-Item -Path $src -Destination $dst -Force -ErrorAction Stop
+		Remove-Item -Path $src -Force -ErrorAction SilentlyContinue
+		$updated = $true
+		break
+	} catch {
+		$attempts++
+		if ($attempts -ge 60) {
+			Write-Host "  Timed out waiting. Launching anyway..." -ForegroundColor Red
+			Remove-Item -Path $src -Force -ErrorAction SilentlyContinue
+			break
+		}
+		Start-Sleep -Milliseconds 300
+	}
+}
+
+if ($updated) {
+	Write-Host "  Update applied!" -ForegroundColor Green
+}
+
+Write-Host "  Launching ${exeName}..." -ForegroundColor Gray
+Start-Process -FilePath $dst
+Write-Host ""
+Write-Host "  Done! This window will close in 10 seconds." -ForegroundColor DarkGray
+Write-Host "  It may take a moment for the new instance to open, so please be patient :)" -ForegroundColor DarkGray
+Write-Host "  If it still doesn't open, try launching rblxswap manually and make sure the update was applied (version number should be different)" -ForegroundColor DarkGray
+Write-Host ""
+Start-Sleep -Seconds 10
+`;
+
+	//? we use bat cuz only powershell alone leads to race conditions where the script file is still locked by the powershell
+	//? process when it tries to relaunch, causing it to fail. the bat acts as a middleman that launches the ps script and then 
+	//? immediately exits, allowing the ps script to do its thing without worrying about being locked itself.
+	const bat = `@echo off
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${scriptPath.replace(/\\/g, '\\\\')}"
+`;
+
+	try {
+		fs.writeFileSync(scriptPath, script, 'utf8');
+		fs.writeFileSync(batPath, bat, 'utf8');
+	} catch (e) {
+		console.error('[update] failed to write update files:', e);
+		return;
+	}
+
+	console.log('[update] target exe:', targetExe);
+
+	const child = require('child_process').spawn(
+		'cmd.exe',
+		['/c', batPath],
+		{ detached: true, windowsHide: true, stdio: 'ignore' } //? cmd hidden, ps opens its own window
+	);
+	child.on('error', (e) => console.error('[update] spawn error:', e));
+	try { child.unref(); } catch (e) {}
+}
+
+ipcMain.handle('update:download', async (e, url) => {
+	try {
+		const sendProgress = (data) => {
+			if (mainWindow && !mainWindow.isDestroyed()) {
+				mainWindow.webContents.send('update:status', data);
+			}
+		};
+		const tmp = await downloadFileToTemp(url, sendProgress);
+		
+		if (!app.isPackaged) {
+			emitLog('info', 'folk it isnt packaged i cant actually replace');
+			showToast('Update', '100% updated yep yep (check temp np)', false, 6000);
+			return { success: true };
+		}
+
+		showToast('Update', 'Applying update...', false, 6000);
+		appIsQuitting = true;
+		spawnDetached(tmp);
+		setTimeout(() => app.quit(), 800);
+		return { success: true };
+	} catch (error) {
+		emitLog('warn', `Update download failed: ${error.message}`);
+		return { success: false, message: error.message };
+	}
+});
+
+ipcMain.handle('update:downloadLatest', async () => {
+	try {
+		const info = await new Promise((resolve, reject) => {
+			https.get('https://api.github.com/repos/focat69/rblxswap/releases/latest', { headers: { 'User-Agent': 'rblxswap-updater' } }, (res) => {
+				let data = '';
+				res.on('data', chunk => data += chunk);
+				res.on('end', () => {
+					try { resolve(JSON.parse(data)); } catch (e) { reject(e); }
+				});
+			}).on('error', reject);
+		});
+
+		const asset = (info.assets || []).find(a => (a.name || '').toLowerCase().endsWith('.exe')) || (info.assets || [])[0];
+		if (!asset || !asset.browser_download_url) return { success: false, message: 'No exe found' };
+
+		const sendProgress = (data) => {
+			if (mainWindow && !mainWindow.isDestroyed()) {
+				mainWindow.webContents.send('update:status', data);
+			}
+		};
+		const tmp = await downloadFileToTemp(asset.browser_download_url, sendProgress);
+		if (!app.isPackaged) {
+			emitLog('info', 'folk it isnt packaged i cant actually replace');
+			showToast('Update', '100% updated yep yep (check temp np)', false, 6000);
+			return { success: true };
+		}
+
+		showToast('Update', 'Applying update...', false, 6000);
+		appIsQuitting = true;
+		spawnDetached(tmp);
+		setTimeout(() => app.quit(), 800);
+		return { success: true };
+	} catch (error) {
+		emitLog('warn', `Update latest failed: ${error.message}`);
+		return { success: false, message: error.message };
+	}
+});
+
 ipcMain.handle('open-external', async (e, url) => {
 	require('electron').shell.openExternal(url);
 });
 
 ipcMain.on('toast-action', (_event, payload) => {
 	if (!payload || typeof payload !== 'object') return;
-	handleToastAction(payload.action, payload.toastId);
+	handleToastAction(payload.action, payload.toastId, payload.index ?? null);
 });
 
 ipcMain.handle('bypass:run', async (event, weblauncherDir) => {
@@ -882,7 +1289,7 @@ ipcMain.handle('bypass:run', async (event, weblauncherDir) => {
 	emitStatus('starting', 0);
 
 	try {
-		await runBypassWorkflow(weblauncherDir);
+		await runCleaner(weblauncherDir);
 		sendToRenderer('bypass:complete', { success: true });
 		return { success: true };
 	} catch (error) {
@@ -995,7 +1402,3 @@ ipcMain.handle('mac:dhcp-refresh', async () => { //? to get new localip np
 		return false;
 	}
 });
-
-
-
-
