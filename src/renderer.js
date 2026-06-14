@@ -10,6 +10,7 @@ function show_view(id) {
 
     if (id === 'settings') load_settings_ui();
     if (id === 'mac') fetch_hardware();
+    if (id === 'home') refresh_backup_status();
 }
 function hide_self() {
     if (s) s.hideWindow();
@@ -97,6 +98,9 @@ async function init() {
     cur_ver = await s.getVersion();
     document.getElementById('vBadge').innerText = cur_ver;
 
+    load_spoof_targets();
+    refresh_backup_status();
+
     if (!c_config.theme) c_config.theme = { ...default_theme };
 
     Object.keys(default_theme).forEach(k => { if (c_config.theme[k] === undefined) c_config.theme[k] = default_theme[k]; });
@@ -155,8 +159,11 @@ function load_settings_ui() {
     document.getElementById('chkPreserveSettings').checked = c_config.preserveSettings || false;
     document.getElementById('chkPreserveFastflags').checked = c_config.preserveFastflags || false;
     document.getElementById('chkDeleteStudio').checked = c_config.deleteStudio || false;
+    document.getElementById('chkPurgeAuth').checked = c_config.purgeAuth !== false;
+    document.getElementById('chkRestorePoint').checked = c_config.restorePoint === true;
     toggle_set_weao();
     toggle_spoof_mode();
+    switch_settings_tab('general');
     if (c_config.weblauncherDir) {
         document.getElementById('txtSetWeao').innerText = c_config.weblauncherDir;
     }
@@ -174,6 +181,30 @@ function toggle_spoof_mode() {
     const isSimple = document.querySelector('input[name="spoofMode"]:checked')?.value === 'simple';
     document.getElementById('mac_advanced_ui').style.display = isSimple ? 'none' : 'block';
     document.getElementById('mac_simple_ui').style.display = isSimple ? 'block' : 'none';
+}
+
+function switch_settings_tab(name) {
+    const tabs = ['general', 'custom'];
+    for (const t of tabs) {
+        document.getElementById('tab_' + t).style.display = t === name ? 'block' : 'none';
+        document.getElementById('settab_' + t).classList.toggle('active', t === name);
+    }
+}
+
+function load_spoof_targets() {
+    const t = c_config.spoofTargets || { mac: true, hwid: true, volume: false };
+    document.getElementById('chkSpoofMac').checked = t.mac !== false;
+    document.getElementById('chkSpoofHwid').checked = t.hwid !== false;
+    document.getElementById('chkSpoofVolume').checked = t.volume === true;
+}
+
+function save_spoof_targets() {
+    c_config.spoofTargets = {
+        mac: document.getElementById('chkSpoofMac').checked,
+        hwid: document.getElementById('chkSpoofHwid').checked,
+        volume: document.getElementById('chkSpoofVolume').checked
+    };
+    if (s) s.setConfig(c_config);
 }
 
 async function scan_set() {
@@ -202,6 +233,8 @@ async function save_settings() {
     c_config.preserveSettings = document.getElementById('chkPreserveSettings').checked;
     c_config.preserveFastflags = document.getElementById('chkPreserveFastflags').checked;
     c_config.deleteStudio = document.getElementById('chkDeleteStudio')?.checked || false;
+    c_config.purgeAuth = document.getElementById('chkPurgeAuth')?.checked !== false;
+    c_config.restorePoint = document.getElementById('chkRestorePoint')?.checked || false;
 
     if (c_config.launcherType === 'weao' && !c_config.weblauncherDir) {
         alert("Please select your WEAO Web Launcher directory.");
@@ -327,7 +360,8 @@ let is_all_adapters = false;
 
 async function fetch_hardware() {
     if (!s) return;
-    hw_list = await s.getAdapters();
+    const got = await s.getAdapters();
+    hw_list = Array.isArray(got) ? got : (got ? [got] : []);
     const sb = document.getElementById('selAdapter');
     sb.innerHTML = '';
     hw_list.forEach(a => {
@@ -338,8 +372,22 @@ async function fetch_hardware() {
     });
     if (hw_list.length > 0) {
         hw_target = hw_list[0].Name;
-        document.getElementById('inpMac').value = hw_list[0].MacAddress;
+        set_mac_for_target();
+    } else {
+        const o = document.createElement('option');
+        o.textContent = 'No network adapters found';
+        sb.appendChild(o);
+        document.getElementById('inpMac').value = '';
+        document.getElementById('macOriginalVal').textContent = '—';
+        mlog('No spoofable network adapters detected.', 'var(--bad)');
+        mlog('Tip: make sure Wi-Fi/Ethernet is enabled and run rblxswap as administrator.', '#888');
     }
+}
+
+function set_mac_for_target() {
+    const trg = hw_list.find(x => x.Name === hw_target);
+    document.getElementById('macOriginalVal').textContent = (trg && trg.MacAddress) ? trg.MacAddress : '—';
+    rnd_mac();
 }
 
 function toggle_all_adapters() {
@@ -352,8 +400,7 @@ function toggle_all_adapters() {
 
 document.getElementById('selAdapter')?.addEventListener('change', e => {
     hw_target = e.target.value;
-    const d = hw_list.find(x => x.Name === hw_target);
-    if (d) document.getElementById('inpMac').value = d.MacAddress;
+    set_mac_for_target();
 });
 
 function rnd_mac() {
@@ -372,7 +419,30 @@ function rnd_mac() {
     const h = () => "0123456789ABCDEF"[Math.floor(Math.random() * 16)];
     const tail = h() + h() + "-" + h() + h() + "-" + h() + h();
 
-    document.getElementById('inpMac').value = build + tail;
+    const inp = document.getElementById('inpMac');
+    inp.value = build + tail;
+
+    inp.classList.remove('rolling');
+    void inp.offsetWidth;
+    inp.classList.add('rolling');
+
+    update_mac_state();
+}
+
+function update_mac_state() {
+    const inp = document.getElementById('inpMac');
+    const badge = document.getElementById('macSpoofBadge');
+    const trg = hw_list.find(x => x.Name === hw_target);
+    const original = trg && trg.MacAddress ? trg.MacAddress.toUpperCase() : null;
+    const isSpoofed = !original || inp.value.toUpperCase() !== original;
+
+    inp.classList.toggle('mac-spoofed', isSpoofed);
+    if (badge) {
+        badge.textContent = isSpoofed ? 'SPOOFED' : 'ORIGINAL';
+        badge.style.color = isSpoofed ? 'var(--good)' : '#999';
+        badge.style.background = isSpoofed ? 'rgba(74,222,128,0.15)' : 'rgba(255,255,255,0.06)';
+        badge.style.borderColor = isSpoofed ? 'rgba(74,222,128,0.35)' : 'rgba(255,255,255,0.12)';
+    }
 }
 
 function mlog(msg, col = '#888') {
@@ -385,44 +455,158 @@ async function run_spoof() {
     if (!s) return;
     document.getElementById('macLogs').innerHTML = '';
 
-    const isSimple = document.querySelector('input[name="spoofMode"]:checked')?.value === 'simple';
-    const targets = (is_all_adapters || isSimple) ? hw_list : hw_list.filter(x => x.Name === hw_target);
-    const run_dhcp = isSimple ? false : document.getElementById('chkDhcp').checked;
+    const do_mac = document.getElementById('chkSpoofMac').checked;
+    const do_hwid = document.getElementById('chkSpoofHwid').checked;
+    const do_vol = document.getElementById('chkSpoofVolume').checked;
 
-    if (targets.length === 0) {
-        mlog("No valid adapters found to spoof.", 'var(--bad)');
+    if (!do_mac && !do_hwid && !do_vol) {
+        mlog("Nothing selected to spoof. Pick at least one option above.", 'var(--bad)');
         return;
     }
 
+    //? warn if a kernel anti-cheat is live — it can interfere with or flag id changes
+    const acs = await s.detectAnticheat();
+    if (acs && acs.length > 0) {
+        mlog(`Warning: ${acs.map(a => a.name).join(', ')} is running. Close it before spoofing.`, '#f5a623');
+        open_anticheat(acs, () => perform_spoof(do_mac, do_hwid, do_vol));
+        return;
+    }
+
+    perform_spoof(do_mac, do_hwid, do_vol);
+}
+
+let pendingAnticheatProceed = null;
+
+function open_anticheat(acs, onProceed) {
+    pendingAnticheatProceed = onProceed;
+    document.getElementById('acTitle').innerText = `${acs.map(a => a.name).join(' + ')} detected`;
+
+    const box = document.getElementById('acSteps');
+    box.innerHTML = '';
+    for (const ac of acs) {
+        if (acs.length > 1) {
+            const h = document.createElement('p');
+            h.className = 'ac-step';
+            h.style.fontWeight = '600';
+            h.innerText = ac.name;
+            box.appendChild(h);
+        }
+        for (const step of ac.steps) {
+            if (step.c) {
+                const row = document.createElement('div');
+                row.className = 'ac-cmd';
+                const code = document.createElement('code');
+                code.innerText = step.c;
+                const btn = document.createElement('button');
+                btn.className = 'ac-copy';
+                btn.innerText = 'Copy';
+                btn.onclick = () => copy_cmd(step.c, btn);
+                row.appendChild(code);
+                row.appendChild(btn);
+                box.appendChild(row);
+            } else {
+                const p = document.createElement('p');
+                p.className = 'ac-step';
+                p.innerText = step.t;
+                box.appendChild(p);
+            }
+        }
+    }
+    document.getElementById('anticheatModal').style.display = 'flex';
+}
+
+function copy_cmd(text, btn) {
+    navigator.clipboard.writeText(text).then(() => {
+        const old = btn.innerText;
+        btn.innerText = 'Copied';
+        setTimeout(() => { btn.innerText = old; }, 1200);
+    }).catch(() => {});
+}
+
+function close_anticheat() {
+    document.getElementById('anticheatModal').style.display = 'none';
+    pendingAnticheatProceed = null;
+}
+
+function proceed_anticheat() {
+    const fn = pendingAnticheatProceed;
+    close_anticheat();
+    if (fn) fn();
+}
+
+async function perform_spoof(do_mac, do_hwid, do_vol) {
+    if (c_config.restorePoint) {
+        mlog('Creating system restore point (may take a moment)...', '#aaa');
+        const rp = await s.createRestorePoint('rblxswap pre-spoof');
+        mlog(rp.ok ? 'Restore point created.' : `Restore point skipped: ${rp.message}`, rp.ok ? 'var(--good)' : '#f5a623');
+    }
+
+    //? back up real originals before spoof
+    await s.backupHwid();
+
     let err_count = 0;
 
-    for (const t of targets) {
-        let currentNewMac = isSimple ? generate_simple_mac(t) : document.getElementById('inpMac').value;
-        mlog(`Spoofing [${t.Name}] to ${currentNewMac}...`, '#aaa');
+    if (do_mac) {
+        const isSimple = document.querySelector('input[name="spoofMode"]:checked')?.value === 'simple';
+        const targets = (is_all_adapters || isSimple) ? hw_list : hw_list.filter(x => x.Name === hw_target);
+        const run_dhcp = isSimple ? false : document.getElementById('chkDhcp').checked;
+
+        if (targets.length === 0) {
+            mlog("No valid adapters found to spoof.", 'var(--bad)');
+        } else {
+            for (const t of targets) {
+                let currentNewMac = isSimple ? generate_simple_mac(t) : document.getElementById('inpMac').value;
+                mlog(`Spoofing [${t.Name}] to ${currentNewMac}...`, '#aaa');
+                try {
+                    const res = await s.spoofMac(t.InterfaceDescription || '', currentNewMac);
+                    if (res) {
+                        mlog('Restarting adapter...', '#aaa');
+                        await s.restartAdapter(t.Name);
+                        mlog(`Done [${t.Name}]`, 'var(--good)');
+                    } else {
+                        mlog(`Failed [${t.Name}] - Run as admin?`, 'var(--bad)');
+                        err_count++;
+                    }
+                } catch (e) {
+                    mlog(`Failed [${t.Name}] - ${e.message}`, 'var(--bad)');
+                    err_count++;
+                }
+            }
+            if (run_dhcp) {
+                mlog('Updating DHCP...', '#aaa');
+                await s.dhcpRefresh();
+            }
+        }
+    }
+
+    if (do_hwid || do_vol) {
+        mlog('Spoofing hardware identifiers...', '#aaa');
         try {
-            const res = await s.spoofMac(t.InterfaceDescription || '', currentNewMac);
-            if (res) {
-                mlog('Restarting adapter...', '#aaa');
-                await s.restartAdapter(t.Name);
-                mlog(`Done [${t.Name}]`, 'var(--good)');
+            const hw = await s.spoofHwid({ guids: do_hwid, volume: do_vol });
+            if (hw.success) {
+                let needsReboot = false;
+                for (const r of hw.results || []) {
+                    mlog(r.ok ? `Done [${r.name}] -> ${r.value}` : `Failed [${r.name}] - ${r.error || 'Run as admin?'}`, r.ok ? 'var(--good)' : 'var(--bad)');
+                    if (!r.ok) err_count++;
+                    if (r.ok && r.reboot) needsReboot = true;
+                }
+                if (needsReboot) mlog('Volume serial change applies after a reboot.', '#f5a623');
             } else {
-                mlog(`Failed [${t.Name}] - Run as admin?`, 'var(--bad)');
+                mlog(`HWID spoof failed${hw.message ? ' - ' + hw.message : ''}`, 'var(--bad)');
                 err_count++;
             }
         } catch (e) {
-            mlog(`Failed [${t.Name}] - ${e.message}`, 'var(--bad)');
+            mlog(`HWID spoof failed - ${e.message}`, 'var(--bad)');
             err_count++;
         }
     }
-    if (run_dhcp) {
-        mlog('Updating DHCP...', '#aaa');
-        await s.dhcpRefresh();
-    }
+
     if (err_count > 0) {
         mlog(`Completed with ${err_count} errors.`, 'var(--bad)');
     } else {
-        mlog('MAC Spoofing Complete.', 'var(--good)');
+        mlog('Spoofing Complete.', 'var(--good)');
     }
+    refresh_backup_status();
 }
 
 function generate_simple_mac(adapter) {
@@ -440,8 +624,13 @@ function generate_simple_mac(adapter) {
 
 async function rev_mac() {
     if (!s) return;
-    document.getElementById('macLogs').innerHTML = '';
 
+    if (await s.hwidBackupExists()) {
+        open_restore();
+        return;
+    }
+
+    document.getElementById('macLogs').innerHTML = '';
     const isSimple = document.querySelector('input[name="spoofMode"]:checked')?.value === 'simple';
     const run_dhcp = isSimple ? false : document.getElementById('chkDhcp').checked;
     const targets = (is_all_adapters || isSimple) ? hw_list : hw_list.filter(x => x.Name === hw_target);
@@ -520,7 +709,105 @@ function execute_confirm() {
     close_confirm();
 }
 
-function revert_all_macs_home_confirmed() {
+async function refresh_backup_status() {
+    if (!s) return;
+    const dot = document.getElementById('backupDot');
+    const txt = document.getElementById('backupStatusText');
+    if (!dot || !txt) return;
+    try {
+        const info = await s.hwidBackupInfo();
+        if (info && info.exists) {
+            const when = info.savedAt ? new Date(info.savedAt).toLocaleString() : 'unknown time';
+            dot.style.background = 'var(--good)';
+            txt.style.color = 'var(--text-dim)';
+            txt.innerText = `Spoofed at ${when}`;
+        } else {
+            dot.style.background = '#555';
+            txt.style.color = 'var(--text-dim)';
+            txt.innerText = 'No backup. Not currently spoofed';
+        }
+    } catch (e) {
+        dot.style.background = '#555';
+        txt.innerText = 'Backup status unavailable';
+    }
+}
+
+async function open_restore() {
+    if (!s) return;
+    const info = await s.hwidBackupInfo();
+    if (!info || !info.exists) {
+        mlog('No backup found to restore from.', 'var(--bad)');
+        return;
+    }
+
+    const when = info.savedAt ? new Date(info.savedAt).toLocaleString() : 'unknown time';
+    document.getElementById('restoreWhen').innerText = `Backup made: ${when}`;
+
+    const rows = [
+        ['restoreRowMac', 'restoreMac', info.has.mac],
+        ['restoreRowHwid', 'restoreHwid', info.has.guids],
+        ['restoreRowVol', 'restoreVol', info.has.volume]
+    ];
+    for (const [rowId, chkId, present] of rows) {
+        document.getElementById(rowId).style.display = present ? 'flex' : 'none';
+        document.getElementById(chkId).checked = present;
+    }
+
+    const hint = document.getElementById('restoreHwidHint');
+    hint.innerText = info.serials && info.serials.machineGuid ? `(${info.serials.machineGuid.slice(0, 8)}…)` : '';
+
+    document.getElementById('restoreModal').style.display = 'flex';
+}
+
+function close_restore() {
+    document.getElementById('restoreModal').style.display = 'none';
+}
+
+async function execute_restore() {
+    const opts = {
+        mac: document.getElementById('restoreMac').checked,
+        guids: document.getElementById('restoreHwid').checked,
+        volume: document.getElementById('restoreVol').checked
+    };
+    if (!opts.mac && !opts.guids && !opts.volume) {
+        mlog('Nothing selected to restore.', 'var(--bad)');
+        return;
+    }
+    close_restore();
+
+    show_view('mac');
+    document.getElementById('macLogs').innerHTML = '';
+    mlog('Restoring selected identifiers from backup...', '#aaa');
+
+    try {
+        const res = await s.restoreHwid(opts);
+        for (const id of res.identifiers || []) {
+            mlog(id.restored ? `Restored ${id.name}` : `Skipped ${id.name} (${id.reason})`, id.restored ? 'var(--good)' : 'var(--bad)');
+        }
+        for (const a of res.adapters || []) {
+            mlog(a.restored ? `Restored [${a.name}]` : `Failed [${a.name}] (${a.reason})`, a.restored ? 'var(--good)' : 'var(--bad)');
+        }
+        if (res.volume) {
+            mlog(res.volume.restored ? `Restored volume serial [${res.volume.drive}]` : `Volume serial not restored (${res.volume.reason})`, res.volume.restored ? 'var(--good)' : 'var(--bad)');
+            if (res.volume.restored && res.volume.reboot) mlog('Volume serial revert applies after a reboot.', '#f5a623');
+        }
+        if (res.ok && !res.coveredEverything) {
+            mlog('Selected items restored. Backup kept for the remaining ones.', '#f5a623');
+        } else {
+            mlog(res.ok ? 'Restore complete.' : 'Restore finished with errors (backup kept).', res.ok ? 'var(--good)' : 'var(--bad)');
+        }
+    } catch (e) {
+        mlog(`Restore failed - ${e.message}`, 'var(--bad)');
+    }
+    refresh_backup_status();
+}
+
+async function revert_all_macs_home_confirmed() {
+    if (s && await s.hwidBackupExists()) {
+        open_restore();
+        return;
+    }
+
     show_confirm('Revert spoofed MACs?', 'This will reset all network adapters to their original MAC addresses.', async () => {
         if (!s) return;
         const btn = document.getElementById('home_revert_btn');
@@ -552,21 +839,7 @@ function revert_all_macs_home_confirmed() {
 }
 
 function check_mac_tooltip() {
-    if (is_all_adapters) return;
-    const inp = document.getElementById('inpMac');
-    if (hw_target && hw_list.length > 0) {
-        const original = hw_list.find(x => x.Name === hw_target)?.MacAddress;
-        const current = inp.value;
-        if (original !== current) {
-            inp.removeAttribute('data-tooltip');
-        }
-    }
-}
-
-function update_mac_tooltip() {
-    if (!is_all_adapters) {
-        document.getElementById('inpMac').removeAttribute('data-tooltip');
-    }
+    update_mac_state();
 }
 
 init();

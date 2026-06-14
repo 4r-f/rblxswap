@@ -33,6 +33,15 @@ contextBridge.exposeInMainWorld('launcher', {
   spoofMac: (desc, mac) => ipcRenderer.invoke('mac:spoof', desc, mac),
   resetMac: (desc) => ipcRenderer.invoke('mac:reset', desc),
   restartAdapter: (name) => ipcRenderer.invoke('mac:restart-adapter', name),
-  dhcpRefresh: () => ipcRenderer.invoke('mac:dhcp-refresh')
+  dhcpRefresh: () => ipcRenderer.invoke('mac:dhcp-refresh'),
+
+  detectAnticheat: () => ipcRenderer.invoke('hwid:detect-anticheat'),
+  createRestorePoint: (desc) => ipcRenderer.invoke('hwid:restore-point', desc),
+  hwidBackupExists: () => ipcRenderer.invoke('hwid:backup-exists'),
+  hwidBackupInfo: () => ipcRenderer.invoke('hwid:backup-info'),
+  backupHwid: () => ipcRenderer.invoke('hwid:backup'),
+  spoofHwid: (opts) => ipcRenderer.invoke('hwid:spoof', opts),
+  restoreHwid: (opts) => ipcRenderer.invoke('hwid:restore', opts),
+  purgeRoblox: () => ipcRenderer.invoke('hwid:purge-roblox')
 });
 

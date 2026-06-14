@@ -1,4 +1,4 @@
-const APP_VERSION = "v0.2.0"; //? also update in package.json, and in the github release body/title for update checking to work (or else it will just assume any release is new lol)
+const APP_VERSION = "v0.3.0"; //? also update in package.json, and in the github release body/title for update checking to work (or else it will just assume any release is new lol)
 
 ///////////////
 
@@ -12,6 +12,8 @@ const { promisify } = require('util');
 const fsPromises = fs.promises;
 const execFileAsync = promisify(execFile);
 const https = require('https');
+
+const hwid = require('./hwid'); //? hardware id backup / spoof / restore engine
 
 const isDev = !app.isPackaged;
 let mainWindow;
@@ -41,6 +43,9 @@ function getConfig() {
 		preserveSettings: true,
 		preserveFastflags: false,
 		deleteStudio: false,
+		purgeAuth: true,
+		restorePoint: false,
+		spoofTargets: { mac: true, hwid: true, volume: false },
 		theme: {
 			"bg-base": "#101010",
 			"bg-accent": "#191919",
@@ -691,7 +696,21 @@ async function runCleaner(weblauncherDir) {
 
 	emitStatus('cleaning ProgramData', 94);
 	await removeProgramDataRoblox();
-	
+
+	if (config.purgeAuth !== false) {
+		emitStatus('purging auth tokens & telemetry', 97);
+		try {
+			const purge = await hwid.purgeRobloxTraces();
+			emitLog('success', `Cleared ${purge.files} local token/log file(s)`);
+			for (const r of purge.registry || []) {
+				emitLog(r.deleted ? 'success' : 'info', r.deleted ? `Removed ${r.key}` : `${r.key} already absent`);
+			}
+			for (const err of purge.errors || []) emitLog('warn', err);
+		} catch (e) {
+			emitLog('warn', `Trace purge failed: ${e.message}`);
+		}
+	}
+
 	if (config.preserveSettings && preservedSettingsFiles.length) {
 		await restoreBackups(preservedSettingsFiles, 'Restored settings file');
 	}
@@ -908,6 +927,15 @@ function handleToastAction(action, toastId, buttonIndex) {
 app.whenReady().then(() => {
 	createWindow();
 
+	//? HKLM spoofing needs elevation; warn early if we aren't admin
+	if (process.platform === 'win32') {
+		hwid.isElevated().then((elevated) => {
+			if (!elevated) {
+				showToast('Not running as admin', 'Hardware ID & MAC spoofing need admin rights. Relaunch rblxswap as administrator, or those steps will fail.', false, 9000);
+			}
+		}).catch(() => {});
+	}
+
 	//*------
 	registerToastAction('open:weao-discord', () => {
 		require('electron').shell.openExternal('https://discord.gg/weaoxyz');
@@ -916,6 +944,17 @@ app.whenReady().then(() => {
 		mainWindow?.show();
 		mainWindow?.focus();
 		mainWindow?.webContents.executeJavaScript('show_view("home")');
+	});
+	registerToastAction('roblox:start-clean', () => {
+		if (!mainWindow || mainWindow.isDestroyed()) createWindow();
+		mainWindow.show();
+		mainWindow.focus();
+		const run = () => mainWindow.webContents.executeJavaScript('start_clean()').catch(() => {});
+		if (mainWindow.webContents.isLoading()) {
+			mainWindow.webContents.once('did-finish-load', run);
+		} else {
+			run();
+		}
 	});
 	registerToastAction('fun:bao_confetti', () => {
 		mainWindow?.webContents.executeJavaScript(`(() => {
@@ -949,7 +988,10 @@ app.whenReady().then(() => {
 				if (robloxGracePeriod >= 1) { //? 1 * 5 (interval) = 5 second grace period
 					wasRobloxRunning = false;
 					robloxGracePeriod = 0;
-					showToast('Roblox Closed', 'Would you like to spoof and clean traces before your next session?', true);
+					showToast('Roblox Closed', 'Would you like to spoof and clean traces before your next session?', [
+						{ label: 'Yes', type: 'yes', actionKey: 'roblox:start-clean', close: true },
+						{ label: 'No', type: 'default', close: true }
+					]);
 				}
 			} else if (wasRobloxRunning) {
 				robloxGracePeriod = 0; //? reset grace period if it comes back
@@ -1306,13 +1348,20 @@ ipcMain.handle('bypass:run', async (event, weblauncherDir) => {
 //! special thanks & credit to https://github.com/centerepic/ByeBanAsync for MAC spoofing logic / registry techniques!
 //! i originally did it wrong and it was a nightmare lol
 ipcMain.handle('mac:get-adapters', async () => {
+	//? -Physical = real hardware NICs; fall back to any MAC-bearing non-pseudo adapter
+	const script = `
+		$ErrorActionPreference = 'SilentlyContinue'
+		$a = @(Get-NetAdapter -Physical | Where-Object { $_.MacAddress })
+		if ($a.Count -eq 0) {
+			$a = @(Get-NetAdapter | Where-Object { $_.MacAddress -and $_.InterfaceDescription -notmatch 'Loopback|Teredo|ISATAP|Tunnel|WAN Miniport|Kernel Debug' })
+		}
+		ConvertTo-Json -InputObject @($a | Select-Object Name, InterfaceDescription, MacAddress, Status) -Compress
+	`;
 	try {
-		const { stdout } = await execFileAsync('powershell', [
-			'-NoProfile',
-			'-Command',
-			`@(Get-NetAdapter | Where-Object { $_.MacAddress -and $_.InterfaceDescription -notmatch 'WARP|VPN|Virtual|Tap|Teredo' } | Select-Object Name, InterfaceDescription, MacAddress, Status) | ConvertTo-Json -Compress`
-		]);
-		return JSON.parse(stdout || '[]');
+		const { stdout } = await execFileAsync('powershell', ['-NoProfile', '-Command', script]);
+		const parsed = JSON.parse(stdout || '[]');
+		//? ConvertTo-Json collapses a single adapter to an object — normalize to array
+		return Array.isArray(parsed) ? parsed : [parsed];
 	} catch (err) {
 		return [];
 	}
@@ -1341,16 +1390,11 @@ ipcMain.handle('mac:spoof', async (e, adapterDesc, newMac) => {
 		if ($adapters) {
 				$path = $adapters[0].PSPath
 				Set-ItemProperty -Path $path -Name "NetworkAddress" -Value "${newMac.replace(/-/g, '')}" -ErrorAction Stop
-
-				# spoof MachineGuid to foil hardware detection
-				$guid = [guid]::NewGuid().ToString().ToLower()
-				Set-ItemProperty -Path "HKLM:\\SOFTWARE\\Microsoft\\Cryptography" -Name "MachineGuid" -Value $guid -ErrorAction SilentlyContinue
-
 				Write-Output "SUCCESS"
 		} else {
 				Write-Output "NOT_FOUND"
 		}
-	`; // we gettin flagged with this one
+	`; //? GUID spoofing lives in hwid:spoof now (backup + v4 validation)
 	try {
 		const { stdout } = await execFileAsync('powershell', ['-NoProfile', '-Command', script]);
 		return stdout.trim() === 'SUCCESS';
@@ -1400,5 +1444,60 @@ ipcMain.handle('mac:dhcp-refresh', async () => { //? to get new localip np
 		return true;
 	} catch (error) {
 		return false;
+	}
+});
+
+// hardware identifier spoofing (MachineGuid / HwProfileGuid / MachineId / volume serial)
+ipcMain.handle('hwid:detect-anticheat', async () => {
+	try {
+		return await hwid.detectAnticheats();
+	} catch (error) {
+		return [];
+	}
+});
+
+ipcMain.handle('hwid:restore-point', async (e, desc) => {
+	try {
+		return await hwid.createSystemRestorePoint(desc || 'rblxswap pre-spoof');
+	} catch (error) {
+		return { ok: false, message: error.message };
+	}
+});
+
+ipcMain.handle('hwid:backup-exists', () => hwid.backupExists());
+
+ipcMain.handle('hwid:backup-info', () => hwid.backupInfo());
+
+ipcMain.handle('hwid:backup', async () => {
+	try {
+		const { created } = await hwid.createBackup();
+		return { success: true, created };
+	} catch (error) {
+		return { success: false, message: error.message };
+	}
+});
+
+ipcMain.handle('hwid:spoof', async (e, opts) => {
+	try {
+		const results = await hwid.spoofIdentifiers(opts || {});
+		return { success: results.some(r => r.ok), results };
+	} catch (error) {
+		return { success: false, message: error.message };
+	}
+});
+
+ipcMain.handle('hwid:restore', async (e, opts) => {
+	try {
+		return await hwid.restoreIdentifiers(opts || {});
+	} catch (error) {
+		return { ok: false, reason: error.message };
+	}
+});
+
+ipcMain.handle('hwid:purge-roblox', async () => {
+	try {
+		return { success: true, ...(await hwid.purgeRobloxTraces()) };
+	} catch (error) {
+		return { success: false, message: error.message };
 	}
 });

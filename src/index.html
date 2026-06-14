@@ -43,6 +43,53 @@
         </div>
     </div>
 
+    <div id="restoreModal" class="confirm-modal">
+        <div style="text-align:left;">
+            <h2 style="text-align:center;">Restore Identifiers</h2>
+            <p id="restoreWhen" style="text-align:center; font-size:0.72rem; color:#888; margin-bottom:12px;">Backup made: —</p>
+
+            <label class="custom-check-wrap" style="display:flex; align-items:center; gap:8px; margin-bottom:8px;" id="restoreRowMac">
+                <input type="checkbox" class="custom-check" id="restoreMac" checked>
+                <span class="custom-check"></span>
+                <span style="font-size:0.8rem;">MAC Address(es)</span>
+            </label>
+            <label class="custom-check-wrap" style="display:flex; align-items:center; gap:8px; margin-bottom:8px;" id="restoreRowHwid">
+                <input type="checkbox" class="custom-check" id="restoreHwid" checked>
+                <span class="custom-check"></span>
+                <span style="font-size:0.8rem;">Hardware IDs <span id="restoreHwidHint" style="font-size:0.62rem; color:#666;"></span></span>
+            </label>
+            <label class="custom-check-wrap" style="display:flex; align-items:center; gap:8px; margin-bottom:4px;" id="restoreRowVol">
+                <input type="checkbox" class="custom-check" id="restoreVol" checked>
+                <span class="custom-check"></span>
+                <span style="font-size:0.8rem;">Disk Volume Serial <span id="restoreVolHint" style="font-size:0.62rem; color:#f5a623;">(reboot)</span></span>
+            </label>
+
+            <div style="display:flex; justify-content:center; gap:8px; margin-top:14px;">
+                <button type="button" style="padding:6px 12px; font-size:0.75rem;"
+                    onclick="close_restore()">Cancel</button>
+                <button type="button" class="btn-primary" style="padding:6px 12px; font-size:0.75rem;"
+                    onclick="execute_restore()">Restore Selected</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="anticheatModal" class="confirm-modal">
+        <div class="ac-modal" style="text-align:left;">
+            <h2 id="acTitle" style="text-align:center; color:var(--bad);">Anti-cheat detected</h2>
+            <p style="font-size:0.72rem; color:var(--text-dim); margin-bottom:12px; text-align:center;">
+                This kernel anti-cheat watches your hardware.
+            </p>
+            <div id="acSteps" style="max-height:230px; overflow-y:auto;"></div>
+            <div style="display:flex; justify-content:center; gap:8px; margin-top:14px;">
+                <button type="button" style="padding:6px 12px; font-size:0.75rem;"
+                    onclick="close_anticheat()">Cancel</button>
+                <button type="button" class="btn-danger"
+                    style="padding:6px 12px; font-size:0.75rem; background:rgba(248,113,113,0.1); border:1px solid transparent;"
+                    onclick="proceed_anticheat()">Spoof Anyway</button>
+            </div>
+        </div>
+    </div>
+
     <div class="app-wrapper">
         <div id="tooltip">Tooltip</div>
 
@@ -98,7 +145,7 @@
                             <line x1="6" y1="6" x2="6.01" y2="6"></line>
                             <line x1="6" y1="18" x2="6.01" y2="18"></line>
                         </svg>
-                        Spoof MAC
+                        Spoof
                     </button>
                 </div>
 
@@ -106,8 +153,14 @@
                     <a id="home_revert_btn" onclick="revert_all_macs_home_confirmed()"
                         style="color: var(--bad); font-size: 0.75rem; text-decoration: underline; cursor: pointer; transition: opacity 0.2s;"
                         onmouseover="this.style.opacity='0.8'" onmouseout="this.style.opacity='1'"
-                        data-tooltip="If you haven't spoofed your MAC(s) yet, you don't need to revert this.">Revert
-                        spoofed MACs</a>
+                        data-tooltip="If you haven't spoofed yet, you don't need to revert this.">Revert spoof &amp; restore
+                        identifiers</a>
+                </div>
+
+                <div id="backupStatus"
+                    style="margin-top: 10px; font-size: 0.68rem; color: var(--text-dim); display:flex; align-items:center; justify-content:center; gap:6px;">
+                    <span id="backupDot" style="width:7px; height:7px; border-radius:50%; background:#555; display:inline-block;"></span>
+                    <span id="backupStatusText">Checking backup…</span>
                 </div>
             </div>
 
@@ -125,7 +178,7 @@
             <!-- after/post clean -->
             <div id="view_post" class="view">
                 <h1 style="color: var(--good);">Sweep Complete!</h1>
-                <p style="padding: 0 12px;">Would you like to spoof your MAC address(es) for extra safety? This may
+                <p style="padding: 0 12px;">Would you like to spoof your hardware identifiers for extra safety? This may
                     disrupt network temporarily.</p>
                 <p style="font-size: 0.75rem; color: var(--text-dim); margin-top: 2px;">Tip: Remember to clear your
                     roblox.com cookies<br/>(or use an incognito) and preferably a VPN!</p>
@@ -149,6 +202,12 @@
                     <button style="padding: 6px 12px; font-size: 0.75rem;" onclick="save_settings()">Done</button>
                 </div>
 
+                <div class="set-tabs">
+                    <button class="set-tab active" id="settab_general" onclick="switch_settings_tab('general')">General</button>
+                    <button class="set-tab" id="settab_custom" onclick="switch_settings_tab('custom')">Customization</button>
+                </div>
+
+                <div id="tab_general">
                 <div class="fgrid">
                     <label>Launcher Type</label>
                     <label class="custom-check-wrap radio-opt">
@@ -189,6 +248,99 @@
                     </label>
                 </div>
 
+                <div class="fgrid">
+                    <label>Behavior</label>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                        <label style="margin:0; font-size:0.75rem; color:#aaa;">Close Button Minimizes Window</label>
+                        <label class="switch">
+                            <input type="checkbox" id="chkMinimizeClose">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="fgrid">
+                    <label>Preserve Settings</label>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                        <label
+                            style="margin:0; font-size:0.75rem; color:#aaa; display:flex; align-items:center; gap:4px;"
+                            data-tooltip="Keeps your in-game settings">
+                            In-Game Settings (Volume, etc.)
+                            <span class="tt-icon"
+                                style="display:inline-block; border:1px solid #555; border-radius:50%; width:12px; height:12px; text-align:center; line-height:12px; font-size:9px; cursor:help;">?</span>
+                        </label>
+                        <label class="switch">
+                            <input type="checkbox" id="chkPreserveSettings">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <label
+                            style="margin:0; font-size:0.75rem; color:#aaa; display:flex; align-items:center; gap:4px;"
+                            data-tooltip="Keeps launcher fastflag customizations">
+                            FastFlags (FFlags)
+                            <span class="tt-icon"
+                                style="display:inline-block; border:1px solid #555; border-radius:50%; width:12px; height:12px; text-align:center; line-height:12px; font-size:9px; cursor:help;">?</span>
+                        </label>
+                        <label class="switch">
+                            <input type="checkbox" id="chkPreserveFastflags">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="fgrid">
+                    <label>Studio Cleanup</label>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                        <label style="margin:0; font-size:0.75rem; color:#aaa; display:flex; align-items:center; gap:4px;" data-tooltip="If enabled, rblxswap may delete Roblox Studio version folders during cleanup.">Delete Roblox Studio folders</label>
+                        <label class="switch">
+                            <input type="checkbox" id="chkDeleteStudio">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="fgrid">
+                    <label>Trace Cleanup</label>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                        <label style="margin:0; font-size:0.75rem; color:#aaa; display:flex; align-items:center; gap:4px;" data-tooltip="During cleanup, clears Roblox local auth tokens, logs and HKCU Roblox registry keys. Browsers are never touched.">
+                            Purge auth tokens &amp; telemetry
+                            <span class="tt-icon" style="display:inline-block; border:1px solid #555; border-radius:50%; width:12px; height:12px; text-align:center; line-height:12px; font-size:9px; cursor:help;">?</span>
+                        </label>
+                        <label class="switch">
+                            <input type="checkbox" id="chkPurgeAuth">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="fgrid">
+                    <label>Safety</label>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                        <label style="margin:0; font-size:0.75rem; color:#aaa; display:flex; align-items:center; gap:4px;" data-tooltip="Creates a Windows System Restore point before each spoof. Covers the registry changes; the disk serial is already covered by the app's own backup. Adds a few seconds.">
+                            System restore point before spoofing
+                            <span class="tt-icon" style="display:inline-block; border:1px solid #555; border-radius:50%; width:12px; height:12px; text-align:center; line-height:12px; font-size:9px; cursor:help;">?</span>
+                        </label>
+                        <label class="switch">
+                            <input type="checkbox" id="chkRestorePoint">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="fgrid">
+                    <label>Updates</label>
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <span style="font-size:0.8rem; color:#aaa;" id="updStatus">Checking...</span>
+                        <div style="display:flex; gap:8px;">
+                            <button type="button" style="padding:4px 8px; font-size:0.7rem;" onclick="check_upd_manual()">Check Now</button>
+                            <button type="button" id="btnInstallLatest" style="padding:4px 8px; font-size:0.7rem;" onclick="install_latest()">Install Latest</button>
+                        </div>
+                    </div>
+                </div>
+                </div><!-- /tab_general -->
+
+                <div id="tab_custom" style="display:none;">
                 <div class="fgrid">
                     <label>Themes</label>
                     <div class="theme-row">
@@ -266,76 +418,14 @@
                             onclick="reset_theme()">Restore Defaults</button>
                     </div>
                 </div>
-
-                <div class="fgrid">
-                    <label>Behavior</label>
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                        <label style="margin:0; font-size:0.75rem; color:#aaa;">Close Button Minimizes Window</label>
-                        <label class="switch">
-                            <input type="checkbox" id="chkMinimizeClose">
-                            <span class="slider"></span>
-                        </label>
-                    </div>
-                </div>
-
-                <div class="fgrid">
-                    <label>Preserve Settings</label>
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                        <label
-                            style="margin:0; font-size:0.75rem; color:#aaa; display:flex; align-items:center; gap:4px;"
-                            data-tooltip="Keeps your in-game settings">
-                            In-Game Settings (Volume, etc.)
-                            <span class="tt-icon"
-                                style="display:inline-block; border:1px solid #555; border-radius:50%; width:12px; height:12px; text-align:center; line-height:12px; font-size:9px; cursor:help;">?</span>
-                        </label>
-                        <label class="switch">
-                            <input type="checkbox" id="chkPreserveSettings">
-                            <span class="slider"></span>
-                        </label>
-                    </div>
-                    <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <label
-                            style="margin:0; font-size:0.75rem; color:#aaa; display:flex; align-items:center; gap:4px;"
-                            data-tooltip="Keeps launcher fastflag customizations">
-                            FastFlags (FFlags)
-                            <span class="tt-icon"
-                                style="display:inline-block; border:1px solid #555; border-radius:50%; width:12px; height:12px; text-align:center; line-height:12px; font-size:9px; cursor:help;">?</span>
-                        </label>
-                        <label class="switch">
-                            <input type="checkbox" id="chkPreserveFastflags">
-                            <span class="slider"></span>
-                        </label>
-                    </div>
-                </div>
-
-                <div class="fgrid">
-                    <label>Studio Cleanup</label>
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                        <label style="margin:0; font-size:0.75rem; color:#aaa; display:flex; align-items:center; gap:4px;" data-tooltip="If enabled, rblxswap may delete Roblox Studio version folders during cleanup.">Delete Roblox Studio folders</label>
-                        <label class="switch">
-                            <input type="checkbox" id="chkDeleteStudio">
-                            <span class="slider"></span>
-                        </label>
-                    </div>
-                </div>
-
-                <div class="fgrid">
-                    <label>Updates</label>
-                    <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <span style="font-size:0.8rem; color:#aaa;" id="updStatus">Checking...</span>
-                        <div style="display:flex; gap:8px;">
-                            <button type="button" style="padding:4px 8px; font-size:0.7rem;" onclick="check_upd_manual()">Check Now</button>
-                            <button type="button" id="btnInstallLatest" style="padding:4px 8px; font-size:0.7rem;" onclick="install_latest()">Install Latest</button>
-                        </div>
-                    </div>
-                </div>
+                </div><!-- /tab_custom -->
             </div>
 
             <!-- mac -->
             <div id="view_mac" class="view" style="max-height: 250px; overflow-y:auto; -webkit-app-region: no-drag;">
                 <div id="mac_advanced_ui">
-                    <p style="font-size:0.75rem; color:#888; margin-bottom:12px;">These are advanced options. If you
-                        don't know what these do, it's safer to choose "Simple MAC" in Settings.</p>
+                    <p style="font-size:0.75rem; color:#888; margin-bottom:12px;">Advanced MAC options. Hardware IDs &amp;
+                        disk serial are controlled below under "What to Spoof". If unsure, pick "Simple" mode in Settings.</p>
                     <div class="fgrid" style="padding:12px; margin-bottom: 6px;">
                         <label>Adapter</label>
                         <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
@@ -351,14 +441,18 @@
                     </div>
 
                     <div class="fgrid" style="padding:12px; margin-bottom: 6px;">
-                        <label>Spoofed MAC</label>
-                        <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px;">
+                        <label style="display:flex; align-items:center; gap:6px;">
+                            New MAC
+                            <span id="macSpoofBadge" style="font-size:0.55rem; font-weight:600; color:var(--good); background:rgba(74,222,128,0.15); border:1px solid rgba(74,222,128,0.35); border-radius:4px; padding:1px 5px;">SPOOFED</span>
+                        </label>
+                        <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
                             <input type="text" id="inpMac" placeholder="XX-XX-XX-XX-XX-XX" maxlength="17"
+                                class="mac-spoofed"
                                 style="font-family:monospace; text-align:center; flex:1;"
-                                data-tooltip="This is your original MAC! Click the shuffle button to change it."
+                                data-tooltip="This is the new MAC that will be applied. Click shuffle to roll a different one, or type your own."
                                 onchange="check_mac_tooltip()">
-                            <button type="button" style="padding:6px 10px; font-size:0.75rem;"
-                                onclick="rnd_mac(); update_mac_tooltip()" data-tooltip="Shuffle MAC">
+                            <button type="button" id="macShuffleBtn" style="padding:6px 10px; font-size:0.75rem;"
+                                onclick="rnd_mac()" data-tooltip="Roll a new MAC">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
                                     fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
                                     stroke-linejoin="round">
@@ -370,6 +464,9 @@
                                 </svg>
                             </button>
                         </div>
+                        <p style="font-size:0.62rem; color:#777; margin:0 0 12px 0;">
+                            Original: <span id="macOriginalVal" style="font-family:monospace; color:#999;">—</span>
+                        </p>
 
                         <div
                             style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
@@ -404,9 +501,43 @@
 
                 <div id="mac_simple_ui"
                     style="display:none; text-align:center; margin-bottom: 12px; background:var(--bg-accent); padding:20px; border-radius:12px; border:1px solid var(--border);">
-                    <h1 style="font-size:1.1rem; margin-bottom:4px;">Simple MAC</h1>
-                    <p style="font-size:0.75rem; margin-bottom:0;">Easy version which uses OUI & spoofs all adapters.
-                        (you may enable advanced options in Settings!)</p>
+                    <h1 style="font-size:1.1rem; margin-bottom:4px;">Simple Mode</h1>
+                    <p style="font-size:0.75rem; margin-bottom:0;">Auto-spoofs all adapters via OUI, plus whatever you
+                        enable below. (advanced MAC options available in Settings!)</p>
+                </div>
+
+                <div class="fgrid" style="padding:12px; margin-bottom: 6px;">
+                    <label>What to Spoof</label>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                        <label style="margin:0; font-size:0.75rem; color:#aaa;"
+                            data-tooltip="Rotates your network adapter MAC address(es).">MAC Address</label>
+                        <label class="switch">
+                            <input type="checkbox" id="chkSpoofMac" checked onchange="save_spoof_targets()">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                        <label style="margin:0; font-size:0.75rem; color:#aaa; display:flex; align-items:center; gap:4px;"
+                            data-tooltip="Rotates UM (ring-3) identifiers. (Best for new Roblox Device Blocking)">
+                            Hardware IDs
+                            <span class="tt-icon" style="display:inline-block; border:1px solid #555; border-radius:50%; width:12px; height:12px; text-align:center; line-height:12px; font-size:9px; cursor:help;">?</span>
+                        </label>
+                        <label class="switch">
+                            <input type="checkbox" id="chkSpoofHwid" checked onchange="save_spoof_targets()">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <label style="margin:0; font-size:0.75rem; color:#aaa; display:flex; align-items:center; gap:4px;"
+                            data-tooltip="Patches the disk volume serial in the boot sector. Applies after a reboot. (Risky, but best for Roblox Device Blocking)">
+                            Disk Volume Serial
+                            <span class="tt-icon" style="display:inline-block; border:1px solid #f5a623; color:#f5a623; border-radius:50%; width:12px; height:12px; text-align:center; line-height:12px; font-size:9px; cursor:help;">!</span>
+                        </label>
+                        <label class="switch">
+                            <input type="checkbox" id="chkSpoofVolume" onchange="save_spoof_targets()">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
                 </div>
 
                 <div id="macLogs"

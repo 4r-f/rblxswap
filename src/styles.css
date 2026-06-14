@@ -634,6 +634,100 @@ input.custom-check:checked+span.custom-check::after {
     border-color: rgba(255, 255, 255, 0.2);
 }
 
+/* spoofed MAC input accent + shuffle feedback */
+#inpMac.mac-spoofed {
+    border-color: rgba(74, 222, 128, 0.45);
+    box-shadow: inset 2px 0 0 var(--good);
+    color: var(--good);
+}
+
+@keyframes macRoll {
+    0% { transform: translateY(-2px); opacity: 0.4; }
+    100% { transform: translateY(0); opacity: 1; }
+}
+
+#inpMac.rolling {
+    animation: macRoll 0.18s ease;
+}
+
+/* anti-cheat help modal */
+.ac-modal {
+    max-width: 360px !important;
+    width: 360px;
+}
+
+.ac-step {
+    font-size: 0.74rem;
+    color: var(--text-main);
+    margin: 8px 0 4px 0;
+    line-height: 1.35;
+}
+
+.ac-cmd {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    background: #0c0c0c;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 6px;
+    padding: 7px 10px;
+    margin: 4px 0 8px 0;
+}
+
+.ac-cmd code {
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 0.74rem;
+    color: var(--good);
+    white-space: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+
+.ac-copy {
+    flex-shrink: 0;
+    padding: 3px 8px;
+    font-size: 0.62rem;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    color: var(--text-dim);
+    cursor: pointer;
+}
+
+.ac-copy:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: var(--text-main);
+}
+
+/* settings tabs */
+.set-tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 12px;
+}
+
+.set-tab {
+    font-size: 0.72rem;
+    padding: 4px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    color: var(--text-dim);
+    background: transparent;
+    border: none;
+    transition: background 0.15s, color 0.15s;
+    -webkit-app-region: no-drag;
+}
+
+.set-tab:hover {
+    color: var(--text-main);
+}
+
+.set-tab.active {
+    color: var(--text-main);
+    background: rgba(255, 255, 255, 0.08);
+}
+
 /* confirmation modal */
 .confirm-modal {
     position: fixed;
@@ -652,6 +746,7 @@ input.custom-check:checked+span.custom-check::after {
 
 .confirm-modal>div {
     background: var(--bg-accent);
+    color: var(--text-main);
     padding: 24px;
     border-radius: 16px;
     border: 1px solid var(--border);
