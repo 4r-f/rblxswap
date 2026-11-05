@@ -68,6 +68,7 @@ handle('cleaner:plan', {
 handle('cleaner:run', { ok: true, dryRun: false, plan: { steps: [], totals: { count: 0, bytes: 0 }, warnings: [] }, result: { removedPaths: 0, failed: [] } });
 handle('toast:show', { ok: true, id: 'smoke' });
 handle('spoof:detect-anticheat', { ok: true, detections: [] });
+handle('spoof:run', { ok: true, mac: [], hwid: [], needsReboot: false, errors: [] });
 handle('diag:get', { ok: true, diagnostics: { platform: process.platform } });
 handle('logs:tail', { ok: true, lines: [] });
 handle('theme:export', { ok: false, error: 'cancelled' });
@@ -175,6 +176,24 @@ app.whenReady().then(async () => {
   if (flow.macActive !== 'view_mac') fail(`spoof view did not open (${flow.macActive})`);
   if (flow.targets !== true) fail('MAC target should default to checked');
   if (flow.helpClosed !== 'none') fail(`help modal did not close (${flow.helpClosed})`);
+
+  const quick = await window.webContents.executeJavaScript(`(async () => {
+    document.querySelector('[data-action="close-help"]').click();
+    document.querySelector('[data-action="show-view"][data-arg="home"]').click();
+    document.querySelector('[data-action="quick-start"]').click();
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    document.querySelector('[data-action="confirm-clean"]').click();
+    await new Promise((resolve) => setTimeout(resolve, 1400));
+    return {
+      view: document.querySelector('.view.active')?.id,
+      title: document.getElementById('postTitle')?.textContent,
+      spoofLog: document.getElementById('loaderLog')?.textContent || ''
+    };
+  })()`);
+
+  console.log('QUICK', JSON.stringify(quick));
+  if (quick.view !== 'view_post') fail(`one-click flow did not reach the final screen (${quick.view})`);
+  if (!/ready/i.test(quick.title || '')) fail(`final screen title wrong (${quick.title})`);
 
   const translated = await window.webContents.executeJavaScript(`(() => {
     window.setLanguage ? window.setLanguage('tr') : null;
