@@ -1,586 +1,540 @@
-<!-- styles are no longer inline cause seven is a contributor -->
-
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>RblxSwap</title>
-
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' file:; script-src 'self' file:; style-src 'self' file: 'unsafe-inline'; img-src 'self' file: data:; font-src 'self' file:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>rblxswap</title>
+  <link rel="stylesheet" href="styles.css">
 </head>
-
 <body>
-    <div id="bg-img-layer"></div>
-    <div id="updateModal">
-        <div>
-            <h1 style="color:var(--text-main); font-size:1.1rem; margin-bottom:8px;">Update Available</h1>
-            <p id="updModalDesc" style="font-size:0.8rem; margin-bottom:16px;"></p>
-            <div style="display:flex; justify-content:center; gap:8px;">
-                <button type="button" style="padding:6px 12px; font-size:0.75rem;"
-                    onclick="ignore_update()">Ignore</button>
-                <button type="button" style="padding:6px 12px; font-size:0.75rem;"
-                    onclick="document.getElementById('updateModal').style.display='none'">Later</button>
-                <button type="button" class="btn-primary"
-                    style="padding:6px 12px; font-size:0.75rem; background:var(--good); color:#000; border:none;"
-                    onclick="download_update()">Download</button>
-            </div>
-        </div>
+  <div id="bg-img-layer"></div>
+
+  <!-- update -->
+  <div id="updateModal" class="modal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="updTitle">
+    <div class="modal-card">
+      <h2 id="updTitle" data-i18n="update.title">Update available</h2>
+      <p id="updModalDesc"></p>
+      <div class="row">
+        <button type="button" data-action="ignore-update" data-i18n="update.ignore">Ignore</button>
+        <button type="button" data-action="update-later" data-i18n="update.later">Later</button>
+        <button type="button" class="btn-primary" data-action="install-latest" data-i18n="update.download">Download</button>
+      </div>
     </div>
+  </div>
 
-    <div id="confirmModal" class="confirm-modal">
-        <div>
-            <h2 id="confirmTitle">Confirm Action</h2>
-            <p id="confirmMsg">Are you sure?</p>
-            <div style="display:flex; justify-content:center; gap:8px;">
-                <button type="button" style="padding:6px 12px; font-size:0.75rem;"
-                    onclick="close_confirm()">Cancel</button>
-                <button type="button" class="btn-danger"
-                    style="padding:6px 12px; font-size:0.75rem; background:rgba(248, 113, 113, 0.1); border:1px solid transparent;"
-                    onclick="execute_confirm()">Confirm</button>
-            </div>
-        </div>
+  <!-- confirm -->
+  <div id="confirmModal" class="modal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+    <div class="modal-card">
+      <h2 id="confirmTitle">Confirm</h2>
+      <p id="confirmMsg"></p>
+      <div class="row">
+        <button type="button" data-action="close-modal" data-arg="confirmModal" data-i18n="common.cancel">Cancel</button>
+        <button type="button" class="btn-danger" data-action="confirm-ok" data-i18n="common.ok">OK</button>
+      </div>
     </div>
+  </div>
 
-    <div id="restoreModal" class="confirm-modal">
-        <div style="text-align:left;">
-            <h2 style="text-align:center;">Restore Identifiers</h2>
-            <p id="restoreWhen" style="text-align:center; font-size:0.72rem; color:#888; margin-bottom:12px;">Backup made: —</p>
+  <!-- restore -->
+  <div id="restoreModal" class="modal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="restoreTitle">
+    <div class="modal-card wide">
+      <h2 id="restoreTitle" data-i18n="restore.title">Restore identifiers</h2>
+      <p id="restoreWhen"></p>
 
-            <label class="custom-check-wrap" style="display:flex; align-items:center; gap:8px; margin-bottom:8px;" id="restoreRowMac">
-                <input type="checkbox" class="custom-check" id="restoreMac" checked>
-                <span class="custom-check"></span>
-                <span style="font-size:0.8rem;">MAC Address(es)</span>
+      <label class="check-row" id="restoreRowMac">
+        <input type="checkbox" class="custom-check" id="restoreMac" checked>
+        <span class="custom-check"></span>
+        <span data-i18n="restore.mac">MAC address(es)</span>
+      </label>
+
+      <label class="check-row" id="restoreRowHwid">
+        <input type="checkbox" class="custom-check" id="restoreHwid" checked>
+        <span class="custom-check"></span>
+        <span><span data-i18n="restore.hwid">Hardware IDs</span> <small id="restoreHwidHint"></small></span>
+      </label>
+
+      <label class="check-row" id="restoreRowVol">
+        <input type="checkbox" class="custom-check" id="restoreVol" checked>
+        <span class="custom-check"></span>
+        <span><span data-i18n="restore.volume">Disk volume serial (reboot)</span></span>
+      </label>
+
+      <p class="muted small" data-i18n="restore.hint">Only restores what exists in the backup.</p>
+
+      <div class="row">
+        <button type="button" data-action="close-modal" data-arg="restoreModal" data-i18n="common.cancel">Cancel</button>
+        <button type="button" class="btn-primary" data-action="execute-restore" data-i18n="restore.button">Restore selected</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- anti-cheat -->
+  <div id="anticheatModal" class="modal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="acTitle">
+    <div class="modal-card wide">
+      <h2 id="acTitle" class="danger-text">Anti-cheat detected</h2>
+      <p class="muted small" data-i18n="anticheat.desc">This kernel anti-cheat watches your hardware. Close it before spoofing.</p>
+      <div id="acSteps" class="ac-steps"></div>
+      <div class="row">
+        <button type="button" data-action="close-anticheat" data-i18n="anticheat.cancel">Cancel</button>
+        <button type="button" class="btn-danger" data-action="proceed-anticheat" data-i18n="anticheat.proceed">Spoof anyway</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- cleanup plan -->
+  <div id="planModal" class="modal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="planTitle">
+    <div class="modal-card wide">
+      <h2 id="planTitle" data-i18n="plan.title">Cleanup preview</h2>
+      <p class="muted small" data-i18n="plan.desc">Nothing has been deleted yet.</p>
+      <div id="planTarget" class="muted tiny"></div>
+      <div id="planWarnings" class="warn-box" style="display:none"></div>
+      <div id="planList" class="plan-list"></div>
+      <div id="planTotals" class="plan-totals"></div>
+      <div class="row">
+        <button type="button" data-action="close-modal" data-arg="planModal" data-i18n="plan.cancel">Cancel</button>
+        <button type="button" class="btn-primary" data-action="confirm-clean" data-i18n="plan.confirm">Clean now</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- diagnostics -->
+  <div id="diagnosticsModal" class="modal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="diagTitle">
+    <div class="modal-card wide">
+      <h2 id="diagTitle" data-i18n="diag.title">Diagnostics</h2>
+      <pre id="diagOutput" class="diag-output"></pre>
+      <div class="row">
+        <button type="button" id="diagCopy" data-action="copy-diagnostics" data-i18n="diag.copy">Copy</button>
+        <button type="button" data-action="close-modal" data-arg="diagnosticsModal" data-i18n="common.close">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="app-wrapper">
+    <div id="tooltip" role="tooltip"></div>
+
+    <header class="hdr">
+      <div class="logo-area" data-action="confetti" data-tooltip=":bao:" role="button" tabindex="0">
+        <img src="../assets/rblxswap_logo_no_bg.png" alt="" class="logo-img">
+        <span class="logo-text">rblxswap</span>
+      </div>
+      <div class="ctrls">
+        <button type="button" class="sys-btn" data-action="show-view" data-arg="settings" data-tooltip="Settings" aria-label="Settings">
+          <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.09a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.09a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+        </button>
+        <button type="button" class="sys-btn close" data-action="hide-window" data-tooltip="Close" aria-label="Close">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <div class="view-stack">
+      <!-- home -->
+      <section id="view_home" class="view active">
+        <h1 data-i18n="home.title">Ready to swap?</h1>
+        <p data-i18n="home.desc">Review what will be removed, then clean traces.</p>
+
+        <div class="row">
+          <button type="button" class="btn-primary" data-action="start-scan">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 6h18"></path><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"></path>
+              <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+              <line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line>
+            </svg>
+            <span data-i18n="home.scan">Scan & Clean</span>
+          </button>
+          <button type="button" data-action="open-spoof">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
+              <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
+              <line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line>
+            </svg>
+            <span data-i18n="home.spoof">Spoof</span>
+          </button>
+        </div>
+
+        <div class="links">
+          <a id="home_revert_btn" data-action="revert" data-tooltip="Restores MACs and hardware identifiers from the backup.">
+            <span data-i18n="home.revert">Revert spoof & restore identifiers</span>
+          </a>
+        </div>
+
+        <div id="backupStatus" class="backup-status">
+          <span id="backupDot" class="dot"></span>
+          <span id="backupStatusText" data-i18n="home.backup.none">No backup yet</span>
+        </div>
+      </section>
+
+      <!-- loader -->
+      <section id="view_loader" class="view">
+        <svg viewBox="0 0 50 50" class="spinner" aria-hidden="true">
+          <circle cx="25" cy="25" r="20" fill="none" stroke="var(--text-main)" stroke-width="3" stroke-dasharray="31.4 100" stroke-linecap="round"></circle>
+        </svg>
+        <h1 id="loaderTitle">Preparing...</h1>
+        <p id="loaderDesc">Working...</p>
+        <div class="progress"><div id="loaderBar" class="progress-bar"></div></div>
+        <div id="loaderLog" class="loader-log" aria-live="polite"></div>
+      </section>
+
+      <!-- post -->
+      <section id="view_post" class="view">
+        <h1 class="good-text" data-i18n="post.title">Sweep complete</h1>
+        <p data-i18n="post.desc">Spoof your hardware identifiers for extra safety?</p>
+        <p class="muted small" data-i18n="post.tip">Tip: clear your roblox.com cookies and use a VPN.</p>
+        <p class="tiny muted" data-i18n="post.discord">Need throwaway alts? Join the WEAO Discord.</p>
+        <div class="row">
+          <button type="button" data-action="hide-window" data-i18n="post.no">No, hide</button>
+          <button type="button" class="btn-primary" data-action="open-spoof" data-i18n="post.yes">Yes, spoof</button>
+        </div>
+      </section>
+
+      <!-- settings -->
+      <section id="view_settings" class="view scrollable">
+        <div class="section-head">
+          <h1 data-i18n="settings.title">Settings</h1>
+          <button type="button" data-action="save-settings" data-i18n="common.done">Done</button>
+        </div>
+
+        <div class="set-tabs">
+          <button type="button" class="set-tab active" id="settab_general" data-action="settings-tab" data-arg="general" data-i18n="settings.tab.general">General</button>
+          <button type="button" class="set-tab" id="settab_custom" data-action="settings-tab" data-arg="custom" data-i18n="settings.tab.custom">Customization</button>
+          <button type="button" class="set-tab" id="settab_profiles" data-action="settings-tab" data-arg="profiles" data-i18n="settings.tab.profiles">Profiles</button>
+        </div>
+
+        <div id="tab_general">
+          <div class="fgrid">
+            <label data-i18n="settings.launcher">Launcher type</label>
+            <label class="radio-opt">
+              <input type="radio" class="custom-check" name="setType" value="default" data-change="set-type" checked>
+              <span class="custom-check"></span>
+              <span data-i18n="settings.default">Default / Other</span>
             </label>
-            <label class="custom-check-wrap" style="display:flex; align-items:center; gap:8px; margin-bottom:8px;" id="restoreRowHwid">
-                <input type="checkbox" class="custom-check" id="restoreHwid" checked>
-                <span class="custom-check"></span>
-                <span style="font-size:0.8rem;">Hardware IDs <span id="restoreHwidHint" style="font-size:0.62rem; color:#666;"></span></span>
-            </label>
-            <label class="custom-check-wrap" style="display:flex; align-items:center; gap:8px; margin-bottom:4px;" id="restoreRowVol">
-                <input type="checkbox" class="custom-check" id="restoreVol" checked>
-                <span class="custom-check"></span>
-                <span style="font-size:0.8rem;">Disk Volume Serial <span id="restoreVolHint" style="font-size:0.62rem; color:#f5a623;">(reboot)</span></span>
+            <label class="radio-opt">
+              <input type="radio" class="custom-check" name="setType" value="weao" data-change="set-type">
+              <span class="custom-check"></span>
+              <span data-i18n="settings.weao">WEAO RDD</span>
             </label>
 
-            <div style="display:flex; justify-content:center; gap:8px; margin-top:14px;">
-                <button type="button" style="padding:6px 12px; font-size:0.75rem;"
-                    onclick="close_restore()">Cancel</button>
-                <button type="button" class="btn-primary" style="padding:6px 12px; font-size:0.75rem;"
-                    onclick="execute_restore()">Restore Selected</button>
+            <div id="setWeaoOpt" class="sub-block" style="display:none">
+              <p id="txtSetWeao" class="path-text" data-i18n="settings.folder.none">Folder: not selected</p>
+              <div class="row tight">
+                <button type="button" data-action="scan-weblauncher" data-i18n="settings.scan">Auto scan</button>
+                <button type="button" data-action="browse-weblauncher" data-i18n="settings.browse">Browse</button>
+              </div>
             </div>
+          </div>
+
+          <div class="fgrid">
+            <label data-i18n="settings.mode">Spoofing mode</label>
+            <label class="radio-opt">
+              <input type="radio" class="custom-check" name="spoofMode" value="simple" data-change="spoof-mode" checked>
+              <span class="custom-check"></span>
+              <span><span data-i18n="settings.simple">Simple</span> <small class="muted" data-i18n="settings.simpleHint"></small></span>
+            </label>
+            <label class="radio-opt">
+              <input type="radio" class="custom-check" name="spoofMode" value="advanced" data-change="spoof-mode">
+              <span class="custom-check"></span>
+              <span><span data-i18n="settings.advanced">Advanced</span> <small class="muted" data-i18n="settings.advancedHint"></small></span>
+            </label>
+          </div>
+
+          <div class="fgrid">
+            <label data-i18n="settings.behavior">Behavior</label>
+            <div class="switch-row">
+              <span data-i18n="settings.minimize">Close button minimizes to tray</span>
+              <label class="switch"><input type="checkbox" id="chkMinimizeClose"><span class="slider"></span></label>
+            </div>
+            <div class="switch-row">
+              <span data-i18n="settings.trash">Use recycle bin for deleted files</span>
+              <label class="switch"><input type="checkbox" id="chkUseTrash"><span class="slider"></span></label>
+            </div>
+            <div class="switch-row">
+              <span data-i18n="settings.autoClean">Clean automatically when Roblox closes</span>
+              <label class="switch"><input type="checkbox" id="chkAutoClean"><span class="slider"></span></label>
+            </div>
+            <div class="switch-row">
+              <span data-i18n="settings.watcher">Watch Roblox process</span>
+              <label class="switch"><input type="checkbox" id="chkWatcher"><span class="slider"></span></label>
+            </div>
+          </div>
+
+          <div class="fgrid">
+            <label data-i18n="settings.preserve">Preserve</label>
+            <div class="switch-row">
+              <span data-i18n="settings.preserveSettings">In-game settings</span>
+              <label class="switch"><input type="checkbox" id="chkPreserveSettings"><span class="slider"></span></label>
+            </div>
+            <div class="switch-row">
+              <span data-i18n="settings.fastflags">FastFlags</span>
+              <label class="switch"><input type="checkbox" id="chkPreserveFastflags"><span class="slider"></span></label>
+            </div>
+          </div>
+
+          <div class="fgrid">
+            <label data-i18n="settings.studio">Studio cleanup</label>
+            <div class="switch-row">
+              <span data-i18n="settings.deleteStudio">Delete Roblox Studio folders too</span>
+              <label class="switch"><input type="checkbox" id="chkDeleteStudio"><span class="slider"></span></label>
+            </div>
+          </div>
+
+          <div class="fgrid">
+            <label data-i18n="settings.trace">Trace cleanup</label>
+            <div class="switch-row">
+              <span data-i18n="settings.purgeAuth">Purge auth tokens & telemetry</span>
+              <label class="switch"><input type="checkbox" id="chkPurgeAuth"><span class="slider"></span></label>
+            </div>
+          </div>
+
+          <div class="fgrid">
+            <label data-i18n="settings.safety">Safety</label>
+            <div class="switch-row">
+              <span data-i18n="settings.restorePoint">System restore point before spoofing</span>
+              <label class="switch"><input type="checkbox" id="chkRestorePoint"><span class="slider"></span></label>
+            </div>
+          </div>
+
+          <div class="fgrid">
+            <label data-i18n="settings.updates">Updates</label>
+            <div class="switch-row">
+              <span id="updStatus" class="muted">Checking...</span>
+              <div class="row tight">
+                <button type="button" data-action="check-updates" data-i18n="settings.check">Check now</button>
+                <button type="button" data-action="install-latest" data-i18n="settings.install">Install latest</button>
+              </div>
+            </div>
+            <div class="field-row">
+              <span data-i18n="settings.channel">Update channel</span>
+              <select id="selChannel">
+                <option value="stable" data-i18n="settings.stable">Stable</option>
+                <option value="beta" data-i18n="settings.beta">Beta</option>
+              </select>
+            </div>
+            <div class="switch-row">
+              <span data-i18n="settings.allowUnsigned">Allow unsigned updates</span>
+              <label class="switch"><input type="checkbox" id="chkAllowUnsigned"><span class="slider"></span></label>
+            </div>
+          </div>
+
+          <div class="fgrid">
+            <div class="field-row">
+              <span data-i18n="settings.language">Language</span>
+              <select id="selLanguage" data-change="language">
+                <option value="en">English</option>
+                <option value="tr">Türkçe</option>
+              </select>
+            </div>
+            <div class="row tight">
+              <button type="button" data-action="open-diagnostics" data-i18n="settings.diagnostics">Diagnostics</button>
+              <button type="button" data-action="open-logs" data-i18n="settings.openLogs">Open logs</button>
+              <button type="button" data-action="test-toast" data-i18n="settings.testToast">Test toast</button>
+            </div>
+          </div>
         </div>
-    </div>
 
-    <div id="anticheatModal" class="confirm-modal">
-        <div class="ac-modal" style="text-align:left;">
-            <h2 id="acTitle" style="text-align:center; color:var(--bad);">Anti-cheat detected</h2>
-            <p style="font-size:0.72rem; color:var(--text-dim); margin-bottom:12px; text-align:center;">
-                This kernel anti-cheat watches your hardware.
-            </p>
-            <div id="acSteps" style="max-height:230px; overflow-y:auto;"></div>
-            <div style="display:flex; justify-content:center; gap:8px; margin-top:14px;">
-                <button type="button" style="padding:6px 12px; font-size:0.75rem;"
-                    onclick="close_anticheat()">Cancel</button>
-                <button type="button" class="btn-danger"
-                    style="padding:6px 12px; font-size:0.75rem; background:rgba(248,113,113,0.1); border:1px solid transparent;"
-                    onclick="proceed_anticheat()">Spoof Anyway</button>
+        <div id="tab_custom" style="display:none">
+          <div class="fgrid">
+            <label data-i18n="theme.title">Themes</label>
+
+            <div class="theme-row">
+              <p class="theme-label" data-i18n="theme.base">Background base</p>
+              <div class="theme-picker" data-tk="bg-base" data-action="open-color" role="button" tabindex="0">
+                <div class="color-swatch" style="background:#101010"></div>
+                <span class="hexTxt">#101010</span>
+              </div>
             </div>
+
+            <div class="theme-row">
+              <p class="theme-label" data-i18n="theme.accent">Background accent</p>
+              <div class="theme-picker" data-tk="bg-accent" data-action="open-color" role="button" tabindex="0">
+                <div class="color-swatch" style="background:#191919"></div>
+                <span class="hexTxt">#191919</span>
+              </div>
+            </div>
+
+            <div class="theme-row">
+              <p class="theme-label" data-i18n="theme.text">Text color</p>
+              <div class="theme-picker" data-tk="text-main" data-action="open-color" role="button" tabindex="0">
+                <div class="color-swatch" style="background:#f0f0f0"></div>
+                <span class="hexTxt">#f0f0f0</span>
+              </div>
+            </div>
+
+            <div class="theme-row">
+              <p class="theme-label" data-i18n="theme.good">Success accent</p>
+              <div class="theme-picker" data-tk="good" data-action="open-color" role="button" tabindex="0">
+                <div class="color-swatch" style="background:#4ade80"></div>
+                <span class="hexTxt">#4ade80</span>
+              </div>
+            </div>
+
+            <div class="theme-row">
+              <p class="theme-label" data-i18n="theme.bad">Error accent</p>
+              <div class="theme-picker" data-tk="bad" data-action="open-color" role="button" tabindex="0">
+                <div class="color-swatch" style="background:#f87171"></div>
+                <span class="hexTxt">#f87171</span>
+              </div>
+            </div>
+
+            <div class="theme-row">
+              <div class="theme-col">
+                <p class="theme-label" data-i18n="theme.bg">Background image</p>
+                <p id="bgImgName" class="muted small" data-i18n="theme.none">No file selected</p>
+              </div>
+              <div class="row tight">
+                <button type="button" data-action="choose-bg" data-i18n="theme.choose">Choose file...</button>
+                <button type="button" id="bgImgClear" data-action="clear-bg" style="display:none" data-i18n="theme.remove">Remove</button>
+              </div>
+              <input type="file" id="bgImgFile" accept="image/*" hidden>
+              <input type="hidden" id="bgImgHidden">
+            </div>
+
+            <div class="switch-row">
+              <span data-i18n="theme.hideGrid">Hide grid overlay</span>
+              <label class="switch"><input type="checkbox" id="chkHideGrid" data-change="hide-grid"><span class="slider"></span></label>
+            </div>
+          </div>
+
+          <div class="row">
+            <button type="button" data-action="export-theme" data-i18n="theme.export">Export</button>
+            <button type="button" data-action="import-theme" data-i18n="theme.import">Import</button>
+            <button type="button" class="btn-danger" data-action="reset-theme" data-i18n="theme.reset">Restore defaults</button>
+          </div>
         </div>
-    </div>
 
-    <div class="app-wrapper">
-        <div id="tooltip">Tooltip</div>
+        <div id="tab_profiles" style="display:none">
+          <div class="fgrid">
+            <label data-i18n="profiles.title">Profiles</label>
+            <p class="muted small" data-i18n="profiles.hint">Profiles store launcher type, spoof mode and targets.</p>
 
-        <div class="hdr">
-            <div class="logo-area" onclick="trigger_bao_confetti()" style="cursor:crosshair;" data-tooltip=":bao:">
-                <img src="../assets/rblxswap_logo_no_bg.png" alt="Logo" class="logo-img"
-                    onerror="this.style.display='none'">
-                <span class="logo-text">RblxSwap</span>
+            <div class="field-row">
+              <input type="text" id="profileName" data-i18n-placeholder="profiles.name" placeholder="Profile name" maxlength="40">
+              <button type="button" data-action="save-profile" data-i18n="profiles.save">Save current</button>
             </div>
-            <div class="ctrls">
-                <div class="sys-btn" data-tooltip="Settings" onclick="show_view('settings')">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none"
-                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <circle cx="12" cy="12" r="3" />
-                        <path
-                            d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
-                    </svg>
-                </div>
-                <div class="sys-btn close" data-tooltip="Close" onclick="hide_self()">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none"
-                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <line x1="18" y1="6" x2="6" y2="18" />
-                        <line x1="6" y1="6" x2="18" y2="18" />
-                    </svg>
-                </div>
+
+            <p id="profileEmpty" class="muted small" style="display:none" data-i18n="profiles.empty">No profiles yet</p>
+
+            <div class="field-row">
+              <select id="profileSelect"></select>
             </div>
+
+            <div class="row tight">
+              <button type="button" data-action="apply-profile" data-i18n="profiles.apply">Apply</button>
+              <button type="button" class="btn-danger" data-action="delete-profile" data-i18n="profiles.delete">Delete</button>
+            </div>
+          </div>
         </div>
+      </section>
 
-        <div class="view-stack">
-            <!-- home -->
-            <div id="view_home" class="view active">
-                <h1 id="home_title">Ready to swap?</h1>
-                <p id="home_desc">Clean out traces and caches safely to log into another account without linking prior
-                    sessions.</p>
+      <!-- mac -->
+      <section id="view_mac" class="view scrollable">
+        <div id="mac_advanced_ui">
+          <p class="muted small" data-i18n="mac.advanced">Advanced MAC options.</p>
 
-                <div style="display:flex; justify-content:center; gap: 8px;">
-                    <button class="btn-primary" onclick="start_clean()">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
-                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M3 6h18" />
-                            <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
-                            <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
-                            <line x1="10" y1="11" x2="10" y2="17" />
-                            <line x1="14" y1="11" x2="14" y2="17" />
-                        </svg>
-                        Clean Traces
-                    </button>
-                    <button onclick="show_view('mac')">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
-                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
-                            <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
-                            <line x1="6" y1="6" x2="6.01" y2="6"></line>
-                            <line x1="6" y1="18" x2="6.01" y2="18"></line>
-                        </svg>
-                        Spoof
-                    </button>
-                </div>
+          <div class="fgrid">
+            <label data-i18n="mac.adapter">Adapter</label>
+            <select id="selAdapter" data-change="adapter"></select>
 
-                <div style="margin-top: 16px;">
-                    <a id="home_revert_btn" onclick="revert_all_macs_home_confirmed()"
-                        style="color: var(--bad); font-size: 0.75rem; text-decoration: underline; cursor: pointer; transition: opacity 0.2s;"
-                        onmouseover="this.style.opacity='0.8'" onmouseout="this.style.opacity='1'"
-                        data-tooltip="If you haven't spoofed yet, you don't need to revert this.">Revert spoof &amp; restore
-                        identifiers</a>
-                </div>
-
-                <div id="backupStatus"
-                    style="margin-top: 10px; font-size: 0.68rem; color: var(--text-dim); display:flex; align-items:center; justify-content:center; gap:6px;">
-                    <span id="backupDot" style="width:7px; height:7px; border-radius:50%; background:#555; display:inline-block;"></span>
-                    <span id="backupStatusText">Checking backup…</span>
-                </div>
+            <div class="switch-row">
+              <span data-i18n="mac.all">Spoof all adapters</span>
+              <label class="switch"><input type="checkbox" id="chkAllAdapters" data-change="all-adapters"><span class="slider"></span></label>
             </div>
+          </div>
 
-            <!-- loader -->
-            <div id="view_loader" class="view">
-                <svg viewBox="0 0 50 50"
-                    style="width:36px;height:36px;animation:spin 1s linear infinite;margin: 0 auto 16px auto;">
-                    <circle id="loaderRing" cx="25" cy="25" r="20" fill="none" stroke="var(--text-main)"
-                        stroke-width="3" stroke-dasharray="31.4 100" stroke-linecap="round"></circle>
+          <div class="fgrid">
+            <label class="label-row">
+              <span data-i18n="mac.newMac">New MAC</span>
+              <span id="macSpoofBadge" class="badge-small">SPOOFED</span>
+            </label>
+
+            <div class="field-row">
+              <input type="text" id="inpMac" class="mono" maxlength="17" placeholder="AA-BB-CC-DD-EE-FF" autocomplete="off" spellcheck="false">
+              <button type="button" data-action="shuffle-mac" aria-label="Shuffle MAC">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M16 3h5v5"></path><path d="M4 20L21 3"></path><path d="M21 16v5h-5"></path>
+                  <path d="M15 15l6 6"></path><path d="M4 4l5 5"></path>
                 </svg>
-                <h1 id="loaderTitle" style="font-size:1rem;font-weight:500;">Initializing 1337...</h1>
-                <p id="loaderDesc" style="font-size:0.75rem;margin-top:4px;">Leet opsec...</p>
+              </button>
             </div>
 
-            <!-- after/post clean -->
-            <div id="view_post" class="view">
-                <h1 style="color: var(--good);">Sweep Complete!</h1>
-                <p style="padding: 0 12px;">Would you like to spoof your hardware identifiers for extra safety? This may
-                    disrupt network temporarily.</p>
-                <p style="font-size: 0.75rem; color: var(--text-dim); margin-top: 2px;">Tip: Remember to clear your
-                    roblox.com cookies<br/>(or use an incognito) and preferably a VPN!</p>
-                <!-- ad placement -->
-                <p style="font-size: 0.60rem; font-weight: 600; color: var(--text-dim); margin-top: 12px;">
-                    Do you want free throwaway alts to safely use for exploits?<br/>Join the <a href="https://discord.gg/weaoxyz" target="_blank" style="color: var(--good); text-decoration: underline;">WEAO Discord</a> and use our new alt generator, free for all!
-                </p>
+            <p class="muted small">
+              <span data-i18n="mac.original">Original</span>:
+              <span id="macOriginalVal" class="mono">—</span>
+            </p>
 
-                <div style="display:flex; justify-content:center; gap: 10px;">
-                    <button onclick="hide_self()">No, Hide</button>
-                    <button class="btn-primary" onclick="show_view('mac')">Yes, Spoof</button>
-                </div>
+            <div class="switch-row">
+              <span data-i18n="mac.mirror">OUI mirror mode</span>
+              <label class="switch"><input type="checkbox" id="chkMirror" data-change="mirror-mode" checked><span class="slider"></span></label>
             </div>
 
-            <!-- settings -->
-            <div id="view_settings" class="view"
-                style="max-height: 250px; overflow-y:auto; -webkit-app-region: no-drag;">
-                <div
-                    style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; width:100%; text-align:left;">
-                    <h1 style="margin:0; font-size:1rem;">Settings</h1>
-                    <button style="padding: 6px 12px; font-size: 0.75rem;" onclick="save_settings()">Done</button>
-                </div>
-
-                <div class="set-tabs">
-                    <button class="set-tab active" id="settab_general" onclick="switch_settings_tab('general')">General</button>
-                    <button class="set-tab" id="settab_custom" onclick="switch_settings_tab('custom')">Customization</button>
-                </div>
-
-                <div id="tab_general">
-                <div class="fgrid">
-                    <label>Launcher Type</label>
-                    <label class="custom-check-wrap radio-opt">
-                        <input type="radio" class="custom-check" name="setType" value="default" onchange="toggle_set_weao()">
-                        <span class="custom-check"></span>
-                        <span>Default / Other</span>
-                    </label>
-                    <label class="custom-check-wrap radio-opt">
-                        <input type="radio" class="custom-check" name="setType" value="weao" onchange="toggle_set_weao()">
-                        <span class="custom-check"></span>
-                        <span>WEAO RDD</span>
-                    </label>
-
-                    <div id="setWeaoOpt"
-                        style="display:none; margin-top:8px; padding-top:8px; border-top:1px solid rgba(255,255,255,0.05);">
-                        <p style="font-size: 0.47rem; color:#888; margin-bottom:6px; word-break:break-all; text-align: left;"
-                            id="txtSetWeao">Folder: Not selected</p>
-                        <div style="display:flex; gap:6px;">
-                            <button type="button" style="padding:4px 8px; font-size:0.7rem;" onclick="scan_set()">Auto
-                                Scan</button>
-                            <button type="button" style="padding:4px 8px; font-size:0.7rem;"
-                                onclick="browse_set()">Browse Folder</button>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="fgrid">
-                    <label>Spoofing Mode</label>
-                    <label class="custom-check-wrap radio-opt">
-                        <input type="radio" class="custom-check" name="spoofMode" value="simple" onchange="toggle_spoof_mode()">
-                        <span class="custom-check"></span>
-                        <span>Simple <span style="font-size:0.6rem; color:#888;">(Auto-Spoof All)</span></span>
-                    </label>
-                    <label class="custom-check-wrap radio-opt">
-                        <input type="radio" class="custom-check" name="spoofMode" value="advanced" onchange="toggle_spoof_mode()">
-                        <span class="custom-check"></span>
-                        <span>Advanced <span style="font-size:0.6rem; color:#888;">(Custom Mac, DHCP)</span></span>
-                    </label>
-                </div>
-
-                <div class="fgrid">
-                    <label>Behavior</label>
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                        <label style="margin:0; font-size:0.75rem; color:#aaa;">Close Button Minimizes Window</label>
-                        <label class="switch">
-                            <input type="checkbox" id="chkMinimizeClose">
-                            <span class="slider"></span>
-                        </label>
-                    </div>
-                </div>
-
-                <div class="fgrid">
-                    <label>Preserve Settings</label>
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                        <label
-                            style="margin:0; font-size:0.75rem; color:#aaa; display:flex; align-items:center; gap:4px;"
-                            data-tooltip="Keeps your in-game settings">
-                            In-Game Settings (Volume, etc.)
-                            <span class="tt-icon"
-                                style="display:inline-block; border:1px solid #555; border-radius:50%; width:12px; height:12px; text-align:center; line-height:12px; font-size:9px; cursor:help;">?</span>
-                        </label>
-                        <label class="switch">
-                            <input type="checkbox" id="chkPreserveSettings">
-                            <span class="slider"></span>
-                        </label>
-                    </div>
-                    <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <label
-                            style="margin:0; font-size:0.75rem; color:#aaa; display:flex; align-items:center; gap:4px;"
-                            data-tooltip="Keeps launcher fastflag customizations">
-                            FastFlags (FFlags)
-                            <span class="tt-icon"
-                                style="display:inline-block; border:1px solid #555; border-radius:50%; width:12px; height:12px; text-align:center; line-height:12px; font-size:9px; cursor:help;">?</span>
-                        </label>
-                        <label class="switch">
-                            <input type="checkbox" id="chkPreserveFastflags">
-                            <span class="slider"></span>
-                        </label>
-                    </div>
-                </div>
-
-                <div class="fgrid">
-                    <label>Studio Cleanup</label>
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                        <label style="margin:0; font-size:0.75rem; color:#aaa; display:flex; align-items:center; gap:4px;" data-tooltip="If enabled, rblxswap may delete Roblox Studio version folders during cleanup.">Delete Roblox Studio folders</label>
-                        <label class="switch">
-                            <input type="checkbox" id="chkDeleteStudio">
-                            <span class="slider"></span>
-                        </label>
-                    </div>
-                </div>
-
-                <div class="fgrid">
-                    <label>Trace Cleanup</label>
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                        <label style="margin:0; font-size:0.75rem; color:#aaa; display:flex; align-items:center; gap:4px;" data-tooltip="During cleanup, clears Roblox local auth tokens, logs and HKCU Roblox registry keys. Browsers are never touched.">
-                            Purge auth tokens &amp; telemetry
-                            <span class="tt-icon" style="display:inline-block; border:1px solid #555; border-radius:50%; width:12px; height:12px; text-align:center; line-height:12px; font-size:9px; cursor:help;">?</span>
-                        </label>
-                        <label class="switch">
-                            <input type="checkbox" id="chkPurgeAuth">
-                            <span class="slider"></span>
-                        </label>
-                    </div>
-                </div>
-
-                <div class="fgrid">
-                    <label>Safety</label>
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                        <label style="margin:0; font-size:0.75rem; color:#aaa; display:flex; align-items:center; gap:4px;" data-tooltip="Creates a Windows System Restore point before each spoof. Covers the registry changes; the disk serial is already covered by the app's own backup. Adds a few seconds.">
-                            System restore point before spoofing
-                            <span class="tt-icon" style="display:inline-block; border:1px solid #555; border-radius:50%; width:12px; height:12px; text-align:center; line-height:12px; font-size:9px; cursor:help;">?</span>
-                        </label>
-                        <label class="switch">
-                            <input type="checkbox" id="chkRestorePoint">
-                            <span class="slider"></span>
-                        </label>
-                    </div>
-                </div>
-
-                <div class="fgrid">
-                    <label>Updates</label>
-                    <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <span style="font-size:0.8rem; color:#aaa;" id="updStatus">Checking...</span>
-                        <div style="display:flex; gap:8px;">
-                            <button type="button" style="padding:4px 8px; font-size:0.7rem;" onclick="check_upd_manual()">Check Now</button>
-                            <button type="button" id="btnInstallLatest" style="padding:4px 8px; font-size:0.7rem;" onclick="install_latest()">Install Latest</button>
-                        </div>
-                    </div>
-                </div>
-                </div><!-- /tab_general -->
-
-                <div id="tab_custom" style="display:none;">
-                <div class="fgrid">
-                    <label>Themes</label>
-                    <div class="theme-row">
-                        <div><p class="theme-label">Background Base</p></div>
-                        <div class="theme-picker" data-tk="bg-base" onclick="open_color_picker(this)">
-                            <div class="color-swatch"></div>
-                            <span class="hexTxt">#101010</span>
-                        </div>
-                    </div>
-                    <div class="theme-row">
-                        <div><p class="theme-label">Background Accent</p></div>
-                        <div class="theme-picker" data-tk="bg-accent" onclick="open_color_picker(this)">
-                            <div class="color-swatch"></div>
-                            <span class="hexTxt">#191919</span>
-                        </div>
-                    </div>
-                    <div class="theme-row">
-                        <div><p class="theme-label">Text Color</p></div>
-                        <div class="theme-picker" data-tk="text-main" onclick="open_color_picker(this)">
-                            <div class="color-swatch"></div>
-                            <span class="hexTxt">#f0f0f0</span>
-                        </div>
-                    </div>
-                    <div class="theme-row">
-                        <div><p class="theme-label">Success Accent (Good)</p></div>
-                        <div class="theme-picker" data-tk="good" onclick="open_color_picker(this)">
-                            <div class="color-swatch"></div>
-                            <span class="hexTxt">#4ade80</span>
-                        </div>
-                    </div>
-                    <div class="theme-row">
-                        <div><p class="theme-label">Error Accent (Bad)</p></div>
-                        <div class="theme-picker" data-tk="bad" onclick="open_color_picker(this)">
-                            <div class="color-swatch"></div>
-                            <span class="hexTxt">#f87171</span>
-                        </div>
-                    </div>
-                    <div class="theme-row" style="margin-top:8px; padding-top:8px;">
-                        <div style="flex:1;">
-                            <p class="theme-label"
-                                style="display:flex; justify-content:space-between; align-items:center;">
-                                Background Image
-                                <button type="button" style="padding:4px 8px; font-size:0.7rem;"
-                                    onclick="document.getElementById('bgImgFile').click()">Choose File...</button>
-                            </p>
-                            <input type="file" id="bgImgFile" accept="image/*" style="display:none;"
-                                onchange="handle_bg_file(this)">
-                            <input type="hidden" data-tk="bg-img" id="bgImgHidden">
-
-                            <div
-                                style="display:flex; justify-content:space-between; align-items:center; margin-top:4px;">
-                                <p id="bgImgName"
-                                    style="font-size:0.7rem; color:var(--text-dim); margin:0; word-break:break-all; padding-right:8px;">
-                                    No file selected</p>
-                                <button type="button" id="bgImgClear"
-                                    style="display:none; padding:4px 8px; font-size:0.7rem; background:rgba(248, 113, 113, 0.1); border:1px solid transparent; color:var(--bad);"
-                                    onclick="clear_bg_file()">Remove</button>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="theme-row" style="margin-top:8px;">
-                        <div>
-                            <p class="theme-label">Hide Grid Overlay</p>
-                        </div>
-                        <div>
-                            <label class="custom-check-wrap">
-                                <input type="checkbox" class="custom-check" data-tk="hide-grid" onchange="apply_theme(this)">
-                                <span class="custom-check"></span>
-                            </label>
-                        </div>
-                    </div>
-                    <div style="margin-top: 12px; display:flex; justify-content:center;">
-                        <button type="button" class="btn-danger"
-                            style="font-size: 0.7rem; padding: 6px 12px; border-color:transparent; background: rgba(248, 113, 113, 0.1);"
-                            onclick="reset_theme()">Restore Defaults</button>
-                    </div>
-                </div>
-                </div><!-- /tab_custom -->
+            <div class="switch-row">
+              <span data-i18n="mac.dhcp">DHCP refresh</span>
+              <label class="switch"><input type="checkbox" id="chkDhcp" checked><span class="slider"></span></label>
             </div>
-
-            <!-- mac -->
-            <div id="view_mac" class="view" style="max-height: 250px; overflow-y:auto; -webkit-app-region: no-drag;">
-                <div id="mac_advanced_ui">
-                    <p style="font-size:0.75rem; color:#888; margin-bottom:12px;">Advanced MAC options. Hardware IDs &amp;
-                        disk serial are controlled below under "What to Spoof". If unsure, pick "Simple" mode in Settings.</p>
-                    <div class="fgrid" style="padding:12px; margin-bottom: 6px;">
-                        <label>Adapter</label>
-                        <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
-                            <select id="selAdapter" style="flex:1; font-size:0.75rem;"></select>
-                        </div>
-                        <div style="display:flex; justify-content:space-between; align-items:center;">
-                            <label style="margin:0; font-size:0.75rem; color:#aaa;">Spoof All Adapters Instead</label>
-                            <label class="switch">
-                                <input type="checkbox" id="chkAllAdapters" onchange="toggle_all_adapters()">
-                                <span class="slider"></span>
-                            </label>
-                        </div>
-                    </div>
-
-                    <div class="fgrid" style="padding:12px; margin-bottom: 6px;">
-                        <label style="display:flex; align-items:center; gap:6px;">
-                            New MAC
-                            <span id="macSpoofBadge" style="font-size:0.55rem; font-weight:600; color:var(--good); background:rgba(74,222,128,0.15); border:1px solid rgba(74,222,128,0.35); border-radius:4px; padding:1px 5px;">SPOOFED</span>
-                        </label>
-                        <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
-                            <input type="text" id="inpMac" placeholder="XX-XX-XX-XX-XX-XX" maxlength="17"
-                                class="mac-spoofed"
-                                style="font-family:monospace; text-align:center; flex:1;"
-                                data-tooltip="This is the new MAC that will be applied. Click shuffle to roll a different one, or type your own."
-                                onchange="check_mac_tooltip()">
-                            <button type="button" id="macShuffleBtn" style="padding:6px 10px; font-size:0.75rem;"
-                                onclick="rnd_mac()" data-tooltip="Roll a new MAC">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
-                                    fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                    stroke-linejoin="round">
-                                    <path d="M16 3h5v5"></path>
-                                    <path d="M4 20L21 3"></path>
-                                    <path d="M21 16v5h-5"></path>
-                                    <path d="M15 15l6 6"></path>
-                                    <path d="M4 4l5 5"></path>
-                                </svg>
-                            </button>
-                        </div>
-                        <p style="font-size:0.62rem; color:#777; margin:0 0 12px 0;">
-                            Original: <span id="macOriginalVal" style="font-family:monospace; color:#999;">—</span>
-                        </p>
-
-                        <div
-                            style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                            <label
-                                style="margin:0; font-size:0.75rem; color:#aaa; display:flex; align-items:center; gap:4px;"
-                                data-tooltip="Keeps the first 3 bytes the same to match your real hardware's brand.">
-                                OUI Mirror Mode
-                                <span class="tt-icon"
-                                    style="display:inline-block; border:1px solid #555; border-radius:50%; width:12px; height:12px; text-align:center; line-height:12px; font-size:9px; cursor:help;">?</span>
-                            </label>
-                            <label class="switch">
-                                <input type="checkbox" id="chkMirror" checked>
-                                <span class="slider"></span>
-                            </label>
-                        </div>
-
-                        <div style="display:flex; justify-content:space-between; align-items:center;">
-                            <label
-                                style="margin:0; font-size:0.75rem; color:#aaa; display:flex; align-items:center; gap:4px;"
-                                data-tooltip="Gets a new local IP from your router. Disconnects you for ~5 seconds. Warning: Softblock risk if spammed.">
-                                DHCP Refresh
-                                <span class="tt-icon"
-                                    style="display:inline-block; border:1px solid #555; border-radius:50%; width:12px; height:12px; text-align:center; line-height:12px; font-size:9px; cursor:help;">?</span>
-                            </label>
-                            <label class="switch">
-                                <input type="checkbox" id="chkDhcp" checked>
-                                <span class="slider"></span>
-                            </label>
-                        </div>
-                    </div>
-                </div>
-
-                <div id="mac_simple_ui"
-                    style="display:none; text-align:center; margin-bottom: 12px; background:var(--bg-accent); padding:20px; border-radius:12px; border:1px solid var(--border);">
-                    <h1 style="font-size:1.1rem; margin-bottom:4px;">Simple Mode</h1>
-                    <p style="font-size:0.75rem; margin-bottom:0;">Auto-spoofs all adapters via OUI, plus whatever you
-                        enable below. (advanced MAC options available in Settings!)</p>
-                </div>
-
-                <div class="fgrid" style="padding:12px; margin-bottom: 6px;">
-                    <label>What to Spoof</label>
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                        <label style="margin:0; font-size:0.75rem; color:#aaa;"
-                            data-tooltip="Rotates your network adapter MAC address(es).">MAC Address</label>
-                        <label class="switch">
-                            <input type="checkbox" id="chkSpoofMac" checked onchange="save_spoof_targets()">
-                            <span class="slider"></span>
-                        </label>
-                    </div>
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                        <label style="margin:0; font-size:0.75rem; color:#aaa; display:flex; align-items:center; gap:4px;"
-                            data-tooltip="Rotates UM (ring-3) identifiers. (Best for new Roblox Device Blocking)">
-                            Hardware IDs
-                            <span class="tt-icon" style="display:inline-block; border:1px solid #555; border-radius:50%; width:12px; height:12px; text-align:center; line-height:12px; font-size:9px; cursor:help;">?</span>
-                        </label>
-                        <label class="switch">
-                            <input type="checkbox" id="chkSpoofHwid" checked onchange="save_spoof_targets()">
-                            <span class="slider"></span>
-                        </label>
-                    </div>
-                    <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <label style="margin:0; font-size:0.75rem; color:#aaa; display:flex; align-items:center; gap:4px;"
-                            data-tooltip="Patches the disk volume serial in the boot sector. Applies after a reboot. (Risky, but best for Roblox Device Blocking)">
-                            Disk Volume Serial
-                            <span class="tt-icon" style="display:inline-block; border:1px solid #f5a623; color:#f5a623; border-radius:50%; width:12px; height:12px; text-align:center; line-height:12px; font-size:9px; cursor:help;">!</span>
-                        </label>
-                        <label class="switch">
-                            <input type="checkbox" id="chkSpoofVolume" onchange="save_spoof_targets()">
-                            <span class="slider"></span>
-                        </label>
-                    </div>
-                </div>
-
-                <div id="macLogs"
-                    style="background:#0c0c0c; border:1px solid rgba(255,255,255,0.05); border-radius:8px; padding:8px; height:50px; overflow-y:auto; scrollbar-width:none; font-size:0.7rem; text-align:left; color:#888; margin-bottom:12px;">
-                    Waiting to spoof...
-                </div>
-
-                <div style="display:flex; justify-content:center; gap:8px;">
-                    <button class="btn-danger"
-                        style="padding:8px 16px; font-size:0.75rem; background:rgba(248, 113, 113, 0.1); border-color:transparent;"
-                        onclick="rev_mac()">Revert</button>
-                    <button class="btn-primary" style="padding:8px 16px; font-size:0.75rem;"
-                        onclick="run_spoof()">Spoof</button>
-                    <button style="padding:8px 16px; font-size:0.75rem;" onclick="show_view('home')">Cancel</button>
-                </div>
-            </div>
+          </div>
         </div>
 
-        <!-- footer (durrrr) -->
-        <div class="footer">
-            <div class="badge" id="vBadge" onclick="check_upd_manual()" style="cursor:pointer;"
-                data-tooltip="Check for updates">vX.X.X</div>
-            <div class="badge status-badge" id="botStatus">Waiting...</div>
+        <div id="mac_simple_ui" class="simple-box" style="display:none">
+          <h2 data-i18n="mac.simple">Simple mode</h2>
+          <p class="muted small" data-i18n="mac.simpleDesc">Auto-spoofs all adapters via OUI.</p>
         </div>
+
+        <div class="fgrid">
+          <label data-i18n="mac.targets">What to spoof</label>
+          <div class="switch-row">
+            <span data-i18n="mac.mac">MAC address</span>
+            <label class="switch"><input type="checkbox" id="chkSpoofMac" data-change="targets" checked><span class="slider"></span></label>
+          </div>
+          <div class="switch-row">
+            <span data-i18n="mac.hwid">Hardware IDs</span>
+            <label class="switch"><input type="checkbox" id="chkSpoofHwid" data-change="targets" checked><span class="slider"></span></label>
+          </div>
+          <div class="switch-row">
+            <span data-i18n="mac.volume">Disk volume serial</span>
+            <label class="switch"><input type="checkbox" id="chkSpoofVolume" data-change="targets"><span class="slider"></span></label>
+          </div>
+        </div>
+
+        <div id="macLogs" class="mac-logs" aria-live="polite">
+          <div data-placeholder="1" class="muted" data-i18n="mac.waiting">Waiting to spoof...</div>
+        </div>
+
+        <div class="row">
+          <button type="button" class="btn-danger" data-action="revert" data-i18n="mac.revert">Revert</button>
+          <button type="button" class="btn-primary" data-action="spoof" data-i18n="mac.spoof">Spoof</button>
+          <button type="button" data-action="show-view" data-arg="home" data-i18n="mac.cancel">Cancel</button>
+        </div>
+      </section>
     </div>
 
-    <!-- amazing colorpicker -->
-    <div id="colorPickr" style="display:none;">
-        <canvas id="cpCanvas" width="200" height="150"></canvas>
-        <div id="cpCvnCrsr"></div>
-        <div class="cp-hue-wrap">
-            <div id="cpHueTrack">
-                <div id="cpHueThmb"></div>
-            </div>
-        </div>
-        <div class="cp-hex-row">
-            <span class="cp-hash">#</span>
-            <input type="text" id="cpHexInp" maxlength="6" spellcheck="false">
-            <div id="cpPreview"></div>
-        </div>
-    </div>
+    <footer class="footer">
+      <div class="badge" id="vBadge" data-tooltip="Version">v0.0.0</div>
+      <div class="badge status-badge" id="botStatus">Waiting...</div>
+    </footer>
+  </div>
 
-    <script src="renderer.js"></script>
+  <!-- color picker -->
+  <div id="colorPickr" style="display:none">
+    <canvas id="cpCanvas" width="200" height="150"></canvas>
+    <div id="cpCvnCrsr"></div>
+    <div class="cp-hue-wrap">
+      <div id="cpHueTrack"><div id="cpHueThmb"></div></div>
+    </div>
+    <div class="cp-hex-row">
+      <span class="cp-hash">#</span>
+      <input type="text" id="cpHexInp" maxlength="6" spellcheck="false">
+      <div id="cpPreview"></div>
+    </div>
+  </div>
+
+  <script src="renderer/api.js"></script>
+  <script src="renderer/i18n.js"></script>
+  <script src="renderer/colorpicker.js"></script>
+  <script src="renderer/main.js"></script>
 </body>
-
 </html>
