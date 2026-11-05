@@ -639,6 +639,7 @@ async function revert() {
 
     toast(t('toast.saved'), errors ? `${errors} error(s)` : t('common.done'));
     await refreshBackupStatus();
+    await refreshHealth();
   });
 }
 
@@ -944,6 +945,7 @@ async function executeRestore() {
     result?.ok ? t('common.done') : (result?.reason || t('toast.error')),
     [{ label: t('common.ok'), type: result?.ok ? 'primary' : 'danger' }]);
   await refreshBackupStatus();
+  await refreshHealth();
 }
 
 // --- confirmation ---------------------------------------------------------
