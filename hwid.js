@@ -1,564 +1,750 @@
+'use strict';
+
 const fs = require('fs');
+const fsp = fs.promises;
+const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
-const { execFile } = require('child_process');
-const { promisify } = require('util');
 
-const execFileAsync = promisify(execFile);
-const fsp = fs.promises;
+const { runPowerShell, runCommand } = require('./src/shared/powershell');
+const { atomicWriteJson, readJsonSync } = require('./src/shared/fs-utils');
+const { isHex64 } = require('./src/shared/security');
+const { REGISTRY_PURGE_KEYS } = require('./src/shared/constants');
+const adapterService = require('./src/main/adapters');
 
 const IDENTIFIERS = {
-	machineGuid:   { hive: 'HKLM', key: 'SOFTWARE\\Microsoft\\Cryptography',                                              value: 'MachineGuid',   braces: false, upper: false },
-	hwProfileGuid: { hive: 'HKLM', key: 'SYSTEM\\CurrentControlSet\\Control\\IDConfigDB\\Hardware Profiles\\0001',         value: 'HwProfileGuid', braces: true,  upper: true  },
-	machineId:     { hive: 'HKLM', key: 'SOFTWARE\\Microsoft\\SQMClient',                                                  value: 'MachineId',     braces: true,  upper: true  }
+  machineGuid: {
+    hive: 'HKLM',
+    key: 'SOFTWARE\\Microsoft\\Cryptography',
+    value: 'MachineGuid',
+    braces: false,
+    upper: false
+  },
+  hwProfileGuid: {
+    hive: 'HKLM',
+    key: 'SYSTEM\\CurrentControlSet\\Control\\IDConfigDB\\Hardware Profiles\\0001',
+    value: 'HwProfileGuid',
+    braces: true,
+    upper: true
+  },
+  machineId: {
+    hive: 'HKLM',
+    key: 'SOFTWARE\\Microsoft\\SQMClient',
+    value: 'MachineId',
+    braces: true,
+    upper: true
+  }
 };
+
 const GUID_RE = /^\{?[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\}?$/;
+const SYSTEM_DRIVE = (process.env.SystemDrive || 'C:').replace(/[\\/]+$/, '').toUpperCase();
+const BACKUP_SCHEMA = 2;
 
 function getExecutionDir() {
-	return process.env.PORTABLE_EXECUTABLE_DIR || path.dirname(process.execPath) || __dirname;
+  return process.env.PORTABLE_EXECUTABLE_DIR || path.dirname(process.execPath) || __dirname;
 }
+
 function getBackupPath() {
-	return path.join(getExecutionDir(), 'backup.json');
+  if (process.env.RBLXSWAP_BACKUP_DIR) {
+    return path.join(process.env.RBLXSWAP_BACKUP_DIR, 'backup.json');
+  }
+
+  const primary = path.join(getExecutionDir(), 'backup.json');
+  try {
+    fs.accessSync(path.dirname(primary), fs.constants.W_OK);
+    return primary;
+  } catch (error) {
+    const fallbackDir = path.join(process.env.LOCALAPPDATA || os.homedir(), 'rblxswap');
+    return path.join(fallbackDir, 'backup.json');
+  }
 }
+
 async function isElevated() {
-	try {
-		await execFileAsync('net', ['session']);
-		return true;
-	} catch (e) {
-		return false;
-	}
+  if (process.platform !== 'win32') return false;
+
+  try {
+    await runCommand('net', ['session']);
+    return true;
+  } catch (error) {
+    return false;
+  }
 }
+
 function backupExists() {
-	return fs.existsSync(getBackupPath());
+  return fs.existsSync(getBackupPath());
 }
 
-//? proper RFC-4122 v4 guid
 function generateGuid({ braces = false, upper = false } = {}) {
-	const b = crypto.randomBytes(16);
-	b[6] = (b[6] & 0x0f) | 0x40; //? version 4
-	b[8] = (b[8] & 0x3f) | 0x80; //? variant 1 (10xx)
+  const bytes = crypto.randomBytes(16);
+  bytes[6] = (bytes[6] & 0x0f) | 0x40; // version 4
+  bytes[8] = (bytes[8] & 0x3f) | 0x80; // variant 1
 
-	const hex = b.toString('hex');
-	let guid = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
-	if (upper) guid = guid.toUpperCase();
-	return braces ? `{${guid}}` : guid;
+  const hex = bytes.toString('hex');
+  let guid = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+  if (upper) guid = guid.toUpperCase();
+  return braces ? `{${guid}}` : guid;
 }
-function isValidGuid(str) {
-	return typeof str === 'string' && GUID_RE.test(str.trim());
+
+function isValidGuid(value) {
+  return typeof value === 'string' && GUID_RE.test(value.trim());
 }
 
 async function regRead(hive, key, value) {
-	try {
-		const { stdout } = await execFileAsync('reg', ['query', `${hive}\\${key}`, '/v', value]);
-		//? line looks like:  MachineGuid    REG_SZ    <data>
-		const m = stdout.match(new RegExp(`${value}\\s+REG_\\w+\\s+(.+)`, 'i'));
-		return m ? m[1].trim() : null;
-	} catch (e) {
-		return null;
-	}
+  try {
+    const { stdout } = await runCommand('reg', ['query', `${hive}\\${key}`, '/v', value]);
+    const match = stdout.match(new RegExp(`${value}\\s+REG_\\w+\\s+(.+)`, 'i'));
+    return match ? match[1].trim() : null;
+  } catch (error) {
+    return null;
+  }
 }
+
 async function regWrite(hive, key, value, data) {
-	await execFileAsync('reg', ['add', `${hive}\\${key}`, '/v', value, '/t', 'REG_SZ', '/d', data, '/f']);
+  await runCommand('reg', ['add', `${hive}\\${key}`, '/v', value, '/t', 'REG_SZ', '/d', data, '/f']);
+
+  // Verify the write instead of trusting reg.exe's exit code.
+  const written = await regRead(hive, key, value);
+  if (written !== data) {
+    throw new Error(`registry verification failed for ${value}`);
+  }
 }
+
 async function regDeleteKey(hive, key) {
-	try {
-		await execFileAsync('reg', ['delete', `${hive}\\${key}`, '/f']);
-		return true;
-	} catch (e) {
-		return false;
-	}
+  try {
+    await runCommand('reg', ['delete', `${hive}\\${key}`, '/f']);
+    return true;
+  } catch (error) {
+    return false;
+  }
 }
 
-function psEscape(str) {
-	return String(str).replace(/'/g, "''");
+function sha256(buffer) {
+  return crypto.createHash('sha256').update(buffer).digest('hex');
 }
 
-function sha256(buf) {
-	return crypto.createHash('sha256').update(buf).digest('hex');
-}
-async function runPs(script) {
-	const { stdout } = await execFileAsync('powershell', ['-NoProfile', '-Command', script]);
-	return stdout.trim();
-}
-
-async function readAdapters() {
-	try {
-		const out = await runPs(`
-			$class = "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Class\\{4d36e972-e325-11ce-bfc1-08002be10318}"
-			Get-NetAdapter | Where-Object { $_.MacAddress -and $_.InterfaceDescription -notmatch 'WARP|VPN|Virtual|Tap|Teredo' } | ForEach-Object {
-				$desc = $_.InterfaceDescription
-				$na = $null
-				Get-ChildItem $class -ErrorAction SilentlyContinue | ForEach-Object {
-					$p = Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue
-					if ($p.DriverDesc -eq $desc) { $na = $p.NetworkAddress }
-				}
-				[pscustomobject]@{ Name = $_.Name; Desc = $desc; Mac = $_.MacAddress; NetworkAddress = $na }
-			} | ConvertTo-Json -Compress
-		`);
-		if (!out) return [];
-		const parsed = JSON.parse(out);
-		return Array.isArray(parsed) ? parsed : [parsed];
-	} catch (e) {
-		return [];
-	}
-}
-
-//? we dont want false bans... that very very not good!
-//* note: { t } is an instruction line, { c } is a command rendered as a copyable codeblock
-const ANTICHEATS = [
-	{ name: 'Riot Vanguard', services: ['vgc', 'vgk'], processes: ['vgc', 'vgtray'],
-		steps: [
-			{ t: '1. Open Command Prompt as Administrator and run these:' },
-			{ c: 'sc stop vgc' },
-			{ c: 'sc config vgk start= disabled' },
-			{ t: '2. Reboot. The vgk kernel driver only unloads on restart' },
-			{ t: '3. To play Valorant again later, reenable it & reboot:' },
-			{ c: 'sc config vgk start= system' }
-		] },
-	{ name: 'FACEIT AC', services: ['faceit', 'faceitac'], processes: ['faceitclient', 'faceit'],
-		steps: [
-			{ t: '1. Right-click the FACEIT AC tray icon and Exit' },
-			{ t: 'Or run as Administrator:' },
-			{ c: 'sc stop faceit' },
-			{ t: '2. Reboot if it keeps running' }
-		] },
-	{ name: 'EasyAntiCheat', services: ['easyanticheat', 'easyanticheat_eos'], processes: ['easyanticheat'],
-		steps: [
-			{ t: '1. Open Command Prompt as Administrator' },
-			{ c: 'sc stop EasyAntiCheat' },
-			{ t: '2. It usually stops on its own once the game is closed' }
-		] },
-	{ name: 'BattlEye', services: ['beservice', 'bedaisy'], processes: ['beservice'],
-		steps: [
-			{ t: '1. Open Command Prompt as Administrator' },
-			{ c: 'sc stop BEService' },
-			{ t: '2. It usually stops once the game is closed' }
-		] },
-	{ name: 'ESEA', services: ['eseaclient'], processes: ['eseaclient'],
-		steps: [
-			{ t: '1. Exit the ESEA client from the system tray' },
-			{ t: '2. Or run as Administrator:' },
-			{ c: 'sc stop ESEAClient' }
-		] }
-];
-async function detectAnticheats() {
-	let running = { services: [], processes: [] };
-	try {
-		const out = await runPs(`
-			$svc = @(Get-CimInstance Win32_Service -ErrorAction SilentlyContinue | Where-Object { $_.State -eq 'Running' } | Select-Object -ExpandProperty Name)
-			$proc = @(Get-Process -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name)
-			ConvertTo-Json -Compress @{ services = $svc; processes = $proc }
-		`);
-		if (out) {
-			const parsed = JSON.parse(out);
-			running.services = (parsed.services || []).map(s => String(s).toLowerCase());
-			running.processes = (parsed.processes || []).map(p => String(p).toLowerCase());
-		}
-	} catch (e) {
-		return [];
-	}
-
-	const detected = [];
-	for (const ac of ANTICHEATS) {
-		const hitSvc = ac.services.find(s => running.services.includes(s));
-		const hitProc = ac.processes.find(p => running.processes.includes(p));
-		if (hitSvc || hitProc) {
-			detected.push({ name: ac.name, service: hitSvc || null, steps: ac.steps });
-		}
-	}
-	return detected;
-}
-
-//? the VSN in the boot sector is the only disk id reachable from usermode
-//? we patch just the serial field n back up the whole original sector
-//! locked/denied volumes are skipped
-const SYSTEM_DRIVE = (process.env.SystemDrive || 'C:').replace(/[\\/]+$/, '');
 function rawVolumePath(drive) {
-	return `\\\\.\\${drive}`;
+  return `\\\\.\\${String(drive).replace(/:$/, '')}:`;
 }
 
-//? Node fs can't do raw volume r/w on Windows so we use .NET's FileStream w/ powershell
-//! 512-byte aligned at offset 0
-async function readSector(drive) {
-	//? read in a loop until the full 512 bytes land!!!!
-	//!!!! a raw volume Read can return short and a partial/zero read must never be mistaken for real boot-sector data!!!!
-	const b64 = await runPs(`
-		$fs = New-Object System.IO.FileStream('${rawVolumePath(drive)}', [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
-		$buf = New-Object byte[] 512
-		$total = 0
-		while ($total -lt 512) {
-			$n = $fs.Read($buf, $total, 512 - $total)
-			if ($n -le 0) { break }
-			$total += $n
-		}
-		$fs.Close()
-		if ($total -lt 512) { '' } else { [Convert]::ToBase64String($buf) }
-	`);
-	//? strip ALL whitespace (not just ends) so any console line-wrap can't mangle the bytes
-	const buf = Buffer.from(b64.replace(/\s+/g, ''), 'base64');
-	if (buf.length !== 512) throw new Error('short read');
-	return buf;
+function volumeLetter(drive) {
+  return String(drive).replace(/[^A-Za-z]/g, '').toUpperCase().slice(0, 1);
 }
 
-//? only a genuine boot sector (0x55AA + known FS tag) is ever written or restored
-//? so a zero/partial/garbage read can never corrupt actual sector :umm:
-function isBootSector(buf) {
-	return Buffer.isBuffer(buf) && buf.length === 512 &&
-		buf[510] === 0x55 && buf[511] === 0xAA && vsnOffset(buf) !== null;
+/** Boot-sector metadata + BitLocker state. */
+async function getVolumeInfo(drive = SYSTEM_DRIVE) {
+  if (process.platform !== 'win32') {
+    return { drive, bytesPerSector: 512, bitlocker: 'Unknown', serial: null };
+  }
+
+  try {
+    const { stdout } = await runPowerShell(`
+$ErrorActionPreference = 'Stop'
+$letter = $env:DRIVE_LETTER
+$partition = Get-Partition -DriveLetter $letter -ErrorAction Stop
+$disk = Get-Disk -Number $partition.DiskNumber -ErrorAction Stop
+$bitlocker = 'Unknown'
+try {
+  $bl = Get-BitLockerVolume -MountPoint ($letter + ':') -ErrorAction Stop
+  $bitlocker = $bl.ProtectionStatus.ToString()
+} catch { }
+$serial = (Get-CimInstance Win32_LogicalDisk -Filter ("DeviceID='" + $letter + ":'")).VolumeSerialNumber
+[pscustomobject]@{
+  BytesPerSector = [int]$disk.LogicalSectorSize
+  BitLocker = $bitlocker
+  Serial = $serial
+} | ConvertTo-Json -Compress
+`, { env: { DRIVE_LETTER: volumeLetter(drive) }, timeout: 20_000 });
+
+    const parsed = JSON.parse(stdout);
+    const bytesPerSector = Number(parsed.BytesPerSector) || 512;
+    const serial = String(parsed.Serial || '').toUpperCase();
+    return {
+      drive,
+      bytesPerSector,
+      bitlocker: String(parsed.BitLocker || 'Unknown'),
+      serial: /^[0-9A-F]{8}$/.test(serial) ? `${serial.slice(0, 4)}-${serial.slice(4)}` : null
+    };
+  } catch (error) {
+    return { drive, bytesPerSector: 512, bitlocker: 'Unknown', serial: null, error: error.message };
+  }
 }
 
-async function writeSector(drive, buffer) {
-	//! never write anything that isn't exactly one 512-byte sector
-	if (!Buffer.isBuffer(buffer) || buffer.length !== 512) {
-		throw new Error('refusing to write a non-512-byte sector');
-	}
-	const b64 = buffer.toString('base64');
-	await runPs(`
-		$bytes = [Convert]::FromBase64String('${b64}')
-		if ($bytes.Length -ne 512) { throw "decoded sector is not 512 bytes" }
-		$fs = New-Object System.IO.FileStream('${rawVolumePath(drive)}', [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite, [IO.FileShare]::ReadWrite)
-		$fs.Seek(0, [IO.SeekOrigin]::Begin) | Out-Null
-		$fs.Write($bytes, 0, 512)
-		$fs.Flush()
-		$fs.Close()
-	`);
+/**
+ * Reads a full physical sector. The old code always assumed 512 bytes, which is
+ * wrong on 4Kn drives.
+ */
+async function readSector(drive = SYSTEM_DRIVE, bytesPerSector = 512) {
+  const size = Number(bytesPerSector) === 4096 ? 4096 : 512;
+
+  const { stdout } = await runPowerShell(`
+$ErrorActionPreference = 'Stop'
+$path = $env:VOLUME_PATH
+$size = [int]$env:SECTOR_SIZE
+$fs = New-Object System.IO.FileStream($path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
+try {
+  $buf = New-Object byte[] $size
+  $total = 0
+  while ($total -lt $size) {
+    $n = $fs.Read($buf, $total, $size - $total)
+    if ($n -le 0) { break }
+    $total += $n
+  }
+  if ($total -lt $size) { throw 'short read' }
+  [Convert]::ToBase64String($buf)
+} finally {
+  $fs.Close()
+}
+`, { env: { VOLUME_PATH: rawVolumePath(drive), SECTOR_SIZE: String(size) }, timeout: 20_000 });
+
+  const buffer = Buffer.from(stdout.replace(/\s+/g, ''), 'base64');
+  if (buffer.length !== size) throw new Error('short read');
+  return buffer;
+}
+
+function vsnOffset(sector) {
+  if (!Buffer.isBuffer(sector) || sector.length < 512) return null;
+  if (sector.toString('ascii', 3, 7) === 'NTFS') return 0x48;
+  if (sector.toString('ascii', 0x52, 0x57) === 'FAT32') return 0x43;
+  if (sector.toString('ascii', 0x36, 0x39) === 'FAT') return 0x27;
+  return null;
+}
+
+function isBootSector(buffer) {
+  return Buffer.isBuffer(buffer)
+    && buffer.length >= 512
+    && buffer[510] === 0x55
+    && buffer[511] === 0xaa
+    && vsnOffset(buffer) !== null;
 }
 
 function generateVolumeSerial() {
-	const hex = crypto.randomBytes(4).toString('hex').toUpperCase();
-	return `${hex.slice(0, 4)}-${hex.slice(4, 8)}`; //? XXXX-XXXX
+  const hex = crypto.randomBytes(4).toString('hex').toUpperCase();
+  return `${hex.slice(0, 4)}-${hex.slice(4, 8)}`;
 }
 
-//? 8 hex digits XXXX-XXXX
 async function readVolumeSerial(drive = SYSTEM_DRIVE) {
-	try {
-		const out = await runPs(`(Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='${psEscape(drive)}'").VolumeSerialNumber`);
-		const h = (out || '').trim().toUpperCase();
-		if (/^[0-9A-F]{8}$/.test(h)) return `${h.slice(0, 4)}-${h.slice(4, 8)}`;
-	} catch (e) {}
-	return null;
+  const info = await getVolumeInfo(drive);
+  return info.serial;
 }
 
-//? 4-byte VSN field
-//? we search via the filesystem signature in the boot sector
-function vsnOffset(sector) {
-	if (sector.toString('ascii', 3, 7) === 'NTFS') return 0x48;        //? NTFS
-	if (sector.toString('ascii', 0x52, 0x57) === 'FAT32') return 0x43; //? FAT32
-	if (sector.toString('ascii', 0x36, 0x39) === 'FAT') return 0x27;   //? FAT12/16
-	return null;
+/**
+ * Writes exactly one sector back. Tries FSCTL_LOCK_VOLUME first, then verifies
+ * the write by reading the VSN field back from the same handle.
+ */
+async function writeSector(drive, buffer, bytesPerSector = 512) {
+  const size = Number(bytesPerSector) === 4096 ? 4096 : 512;
+  if (!Buffer.isBuffer(buffer) || buffer.length !== size) {
+    throw new Error(`refusing to write a non-${size}-byte sector`);
+  }
+  if (!isBootSector(buffer)) {
+    throw new Error('refusing to write a buffer that is not a boot sector');
+  }
+
+  const offset = vsnOffset(buffer);
+  const expected = buffer.subarray(offset, offset + 4).toString('hex');
+  const base64 = buffer.toString('base64');
+
+  const { stdout } = await runPowerShell(`
+$ErrorActionPreference = 'Stop'
+$path = $env:VOLUME_PATH
+$size = [int]$env:SECTOR_SIZE
+$bytes = [Convert]::FromBase64String($env:SECTOR_B64)
+if ($bytes.Length -ne $size) { throw 'decoded sector size mismatch' }
+
+$locked = $false
+try {
+  Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+public static class RblxVolume {
+  [DllImport("kernel32.dll", SetLastError=true, CharSet=CharSet.Unicode)]
+  public static extern IntPtr CreateFileW(string name, uint access, uint share, IntPtr sec, uint disp, uint flags, IntPtr tmpl);
+  [DllImport("kernel32.dll", SetLastError=true)]
+  public static extern bool DeviceIoControl(IntPtr handle, uint code, IntPtr inBuf, int inSize, IntPtr outBuf, int outSize, out int returned, IntPtr overlapped);
+  [DllImport("kernel32.dll", SetLastError=true)]
+  public static extern bool CloseHandle(IntPtr handle);
+}
+"@ -ErrorAction Stop
+
+  $handle = [RblxVolume]::CreateFileW($path, 0xC0000000, 3, [IntPtr]::Zero, 3, 0, [IntPtr]::Zero)
+  if ($handle.ToInt64() -ne -1 -and $handle.ToInt64() -ne 0) {
+    $returned = 0
+    $locked = [RblxVolume]::DeviceIoControl($handle, 0x00090018, [IntPtr]::Zero, 0, [IntPtr]::Zero, 0, [ref]$returned, [IntPtr]::Zero)
+    [void][RblxVolume]::CloseHandle($handle)
+  }
+} catch { $locked = $false }
+
+$fs = New-Object System.IO.FileStream($path, [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite, [IO.FileShare]::ReadWrite)
+try {
+  $fs.Seek(0, [IO.SeekOrigin]::Begin) | Out-Null
+  $fs.Write($bytes, 0, $size)
+  $fs.Flush($true)
+
+  $fs.Seek(0, [IO.SeekOrigin]::Begin) | Out-Null
+  $check = New-Object byte[] $size
+  $read = 0
+  while ($read -lt $size) {
+    $n = $fs.Read($check, $read, $size - $read)
+    if ($n -le 0) { break }
+    $read += $n
+  }
+  $expected = $env:EXPECTED_HEX
+  $actual = ([BitConverter]::ToString($check, [int]$env:VSN_OFFSET, 4)).Replace('-', '').ToLowerInvariant()
+  $verified = ($actual -eq $expected)
+} finally {
+  $fs.Close()
 }
 
-//! snapshot drive letter + displayed serial + the raw boot sector (base64) for exact revert!!!
+[pscustomobject]@{ Locked = $locked; Verified = $verified } | ConvertTo-Json -Compress
+`, {
+    env: {
+      VOLUME_PATH: rawVolumePath(drive),
+      SECTOR_SIZE: String(size),
+      SECTOR_B64: base64,
+      EXPECTED_HEX: expected,
+      VSN_OFFSET: String(offset)
+    },
+    timeout: 30_000
+  });
+
+  const parsed = JSON.parse(stdout);
+  return { locked: Boolean(parsed.Locked), verified: Boolean(parsed.Verified) };
+}
+
 async function readVolumeBackup(drive = SYSTEM_DRIVE) {
-	const entry = { drive, serial: await readVolumeSerial(drive), sector: null, sectorHash: null, offset: null };
-	try {
-		const buf = await readSector(drive);
-		if (isBootSector(buf)) { //? only store a sector we can prove is genuine
-			entry.sector = buf.toString('base64');
-			entry.sectorHash = sha256(buf);
-			entry.offset = vsnOffset(buf);
-		}
-	} catch (e) {}
-	return entry;
+  const info = await getVolumeInfo(drive);
+  const entry = {
+    drive,
+    serial: info.serial,
+    bytesPerSector: info.bytesPerSector,
+    bitlocker: info.bitlocker,
+    sector: null,
+    sectorHash: null,
+    offset: null
+  };
+
+  try {
+    const buffer = await readSector(drive, info.bytesPerSector);
+    if (isBootSector(buffer)) {
+      entry.sector = buffer.toString('base64');
+      entry.sectorHash = sha256(buffer);
+      entry.offset = vsnOffset(buffer);
+    }
+  } catch (error) {
+    entry.error = error.message;
+  }
+
+  return entry;
 }
 
-//? patches the VSN field in place (32-bit little-endian) and writes the sector back
-//? changes apply on next mount/reboot
-async function spoofVolumeSerial(drive = SYSTEM_DRIVE) {
-	try {
-		const buf = await readSector(drive);
-		if (!isBootSector(buf)) return { drive, ok: false, error: 'not a valid boot sector (elevated?)' };
+async function spoofVolumeSerial(drive = SYSTEM_DRIVE, { allowBitLocker = false } = {}) {
+  try {
+    const info = await getVolumeInfo(drive);
+    if (/on/i.test(info.bitlocker) && !allowBitLocker) {
+      return { drive, ok: false, error: 'BitLocker is enabled; refusing to modify the boot sector' };
+    }
 
-		const serial = generateVolumeSerial();
-		buf.writeUInt32LE(parseInt(serial.replace('-', ''), 16) >>> 0, vsnOffset(buf));
-		await writeSector(drive, buf);
-		return { drive, ok: true, serial, reboot: true };
-	} catch (e) {
-		return { drive, ok: false, error: e.message };
-	}
+    const buffer = await readSector(drive, info.bytesPerSector);
+    if (!isBootSector(buffer)) {
+      return { drive, ok: false, error: 'not a valid boot sector (run as administrator?)' };
+    }
+
+    const serial = generateVolumeSerial();
+    buffer.writeUInt32LE(parseInt(serial.replace('-', ''), 16) >>> 0, vsnOffset(buffer));
+
+    const write = await writeSector(drive, buffer, info.bytesPerSector);
+    if (!write.verified) {
+      return { drive, ok: false, error: 'write verification failed; reboot may still apply it' };
+    }
+
+    return { drive, ok: true, serial, reboot: true, locked: write.locked, bytesPerSector: info.bytesPerSector };
+  } catch (error) {
+    return { drive, ok: false, error: error.message };
+  }
 }
 
-//? writes the original boot sector back — only after proving it survived storage intact
 async function restoreVolumeSerial(entry) {
-	if (!entry || !entry.sector) return { drive: entry?.drive, restored: false, reason: 'no-sector' };
-	const buf = Buffer.from(String(entry.sector).replace(/\s+/g, ''), 'base64');
+  if (!entry || !entry.sector) {
+    return { drive: entry?.drive, restored: false, reason: 'no-sector' };
+  }
 
-	//! must decode to a genuine 512-byte boot sector (0x55AA + known FS)
-	if (!isBootSector(buf)) return { drive: entry.drive, restored: false, reason: 'backup not a valid boot sector' };
+  const buffer = Buffer.from(String(entry.sector).replace(/\s+/g, ''), 'base64');
+  if (!isBootSector(buffer)) {
+    return { drive: entry.drive, restored: false, reason: 'backup is not a valid boot sector' };
+  }
 
-	//! AND bytes must hash-match what we originally read
-	//! if it doesn't match, we do NOT write cuz umm... not good
-	if (entry.sectorHash && sha256(buf) !== entry.sectorHash) {
-		return { drive: entry.drive, restored: false, reason: 'integrity check failed — backup not written' };
-	}
+  if (!entry.sectorHash || !isHex64(entry.sectorHash) || sha256(buffer) !== entry.sectorHash) {
+    return { drive: entry.drive, restored: false, reason: 'integrity check failed; backup not written' };
+  }
 
-	try {
-		await writeSector(entry.drive, buf);
-		return { drive: entry.drive, restored: true, reboot: true };
-	} catch (e) {
-		return { drive: entry.drive, restored: false, reason: e.message };
-	}
+  try {
+    const size = Number(entry.bytesPerSector) === 4096 ? 4096 : 512;
+    const write = await writeSector(entry.drive, buffer, size);
+    if (!write.verified) {
+      return { drive: entry.drive, restored: false, reason: 'write verification failed' };
+    }
+    return { drive: entry.drive, restored: true, reboot: true, locked: write.locked };
+  } catch (error) {
+    return { drive: entry.drive, restored: false, reason: error.message };
+  }
 }
 
-//? Windows System Restore point — safety net for the registry spoofs. enables restore on
-//? the system drive and clears the 24h throttle so the checkpoint actually creates.
+/**
+ * Creates a System Restore point and restores the previous throttle value
+ * instead of permanently setting it to zero.
+ */
 async function createSystemRestorePoint(description = 'rblxswap pre-spoof') {
-	try {
-		const out = await runPs(`
-			try {
-				Enable-ComputerRestore -Drive "$env:SystemDrive\\" -ErrorAction SilentlyContinue
-				New-ItemProperty -Path "HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\SystemRestore" -Name "SystemRestorePointCreationFrequency" -Value 0 -PropertyType DWord -Force -ErrorAction SilentlyContinue | Out-Null
-				Checkpoint-Computer -Description '${psEscape(description)}' -RestorePointType 'MODIFY_SETTINGS' -ErrorAction Stop
-				Write-Output 'OK'
-			} catch {
-				Write-Output ('ERR: ' + $_.Exception.Message)
-			}
-		`);
-		if (out.startsWith('OK')) return { ok: true };
-		return { ok: false, message: out.replace(/^ERR:\s*/, '') || 'System Restore unavailable' };
-	} catch (e) {
-		return { ok: false, message: e.message };
-	}
+  if (process.platform !== 'win32') {
+    return { ok: false, message: 'Windows only' };
+  }
+
+  try {
+    const { stdout } = await runPowerShell(`
+$ErrorActionPreference = 'Stop'
+$key = 'HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\SystemRestore'
+$previous = $null
+try { $previous = (Get-ItemProperty -Path $key -Name SystemRestorePointCreationFrequency -ErrorAction Stop).SystemRestorePointCreationFrequency } catch { }
+$hadPrevious = ($null -ne $previous)
+try {
+  Enable-ComputerRestore -Drive ($env:SystemDrive + '\\') -ErrorAction SilentlyContinue
+  New-ItemProperty -Path $key -Name SystemRestorePointCreationFrequency -Value 0 -PropertyType DWord -Force -ErrorAction SilentlyContinue | Out-Null
+  Checkpoint-Computer -Description $env:RESTORE_DESC -RestorePointType 'MODIFY_SETTINGS' -ErrorAction Stop
+  Write-Output 'OK'
+} catch {
+  Write-Output ('ERR: ' + $_.Exception.Message)
+} finally {
+  if ($hadPrevious) {
+    New-ItemProperty -Path $key -Name SystemRestorePointCreationFrequency -Value $previous -PropertyType DWord -Force -ErrorAction SilentlyContinue | Out-Null
+  } else {
+    Remove-ItemProperty -Path $key -Name SystemRestorePointCreationFrequency -ErrorAction SilentlyContinue
+  }
+}
+`, { env: { RESTORE_DESC: String(description).slice(0, 200) }, timeout: 90_000 });
+
+    if (stdout.startsWith('OK')) return { ok: true };
+    return { ok: false, message: stdout.replace(/^ERR:\s*/, '') || 'System Restore unavailable' };
+  } catch (error) {
+    return { ok: false, message: error.message };
+  }
 }
 
-//* NOTE: snapshot genuine identifiers exactly once
-//* never overwrite originals with spoofed ones
-async function createBackup() {
-	if (backupExists()) {
-		return { created: false, snapshot: readBackup() };
-	}
+async function createBackup({ noVolume = false, ensureVolume = false } = {}) {
+  if (backupExists()) {
+    const existing = readBackup();
+    if (!existing) {
+      throw new Error('backup.json exists but is unreadable; fix or remove it before spoofing');
+    }
 
-	const snapshot = {
-		savedAt: new Date().toISOString(),
-		identifiers: {},
-		adapters: await readAdapters(),
-		volume: await readVolumeBackup() //? system-drive boot sector + serial
-	};
+    // A GUID-only spoof may have created a backup without the boot sector.
+    // Upgrade it before the first volume write so restore stays possible.
+    if (ensureVolume && !noVolume && !existing.volume?.sector) {
+      existing.volume = await readVolumeBackup();
+      await atomicWriteJson(getBackupPath(), existing);
+      return { created: false, upgraded: true, snapshot: existing };
+    }
 
-	for (const [name, spec] of Object.entries(IDENTIFIERS)) {
-		snapshot.identifiers[name] = await regRead(spec.hive, spec.key, spec.value);
-	}
+    return { created: false, snapshot: existing };
+  }
 
-	await fsp.writeFile(getBackupPath(), JSON.stringify(snapshot, null, 2), 'utf8');
-	return { created: true, snapshot };
+  const snapshot = {
+    schema: BACKUP_SCHEMA,
+    savedAt: new Date().toISOString(),
+    identifiers: {},
+    adapters: await adapterService.listAdapters(),
+    volume: noVolume ? null : await readVolumeBackup()
+  };
+
+  for (const [name, spec] of Object.entries(IDENTIFIERS)) {
+    snapshot.identifiers[name] = await regRead(spec.hive, spec.key, spec.value);
+  }
+
+  await atomicWriteJson(getBackupPath(), snapshot);
+  return { created: true, snapshot };
 }
 
 function readBackup() {
-	try {
-		return JSON.parse(fs.readFileSync(getBackupPath(), 'utf8'));
-	} catch (e) {
-		return null;
-	}
-}
+  const data = readJsonSync(getBackupPath(), null);
+  if (!data || typeof data !== 'object') return null;
 
-//? back up first (no-op if already done), then write fresh valid values
-//? each write is isolated so one denied key doesn't sink the rest
-//* opts.guids / opts.volume gate each group
-async function spoofIdentifiers(opts = {}) {
-	const { guids = true, volume = true } = opts;
-	await createBackup();
-
-	const results = [];
-	if (guids) {
-		for (const [name, spec] of Object.entries(IDENTIFIERS)) {
-			const fresh = generateGuid({ braces: spec.braces, upper: spec.upper });
-			try {
-				await regWrite(spec.hive, spec.key, spec.value, fresh);
-				results.push({ name, value: fresh, ok: true });
-			} catch (e) {
-				results.push({ name, value: fresh, ok: false, error: e.message });
-			}
-		}
-	}
-
-	//? boot-sector VSN
-	if (volume) {
-		const vol = await spoofVolumeSerial();
-		results.push({ name: 'volumeSerial', value: vol.serial || null, ok: vol.ok, error: vol.error, reboot: vol.reboot });
-	}
-
-	return results;
+  return {
+    schema: Number(data.schema) || 1,
+    savedAt: data.savedAt || null,
+    identifiers: data.identifiers && typeof data.identifiers === 'object' ? data.identifiers : {},
+    adapters: Array.isArray(data.adapters) ? data.adapters : [],
+    volume: data.volume && typeof data.volume === 'object' ? data.volume : null
+  };
 }
 
 function backupInfo() {
-	const backup = readBackup();
-	if (!backup) return { exists: false };
-	return {
-		exists: true,
-		savedAt: backup.savedAt || null,
-		has: {
-			guids: Object.values(backup.identifiers || {}).some(isValidGuid),
-			mac: (backup.adapters || []).length > 0,
-			volume: !!(backup.volume && backup.volume.sector)
-		},
-		serials: {
-			machineGuid: backup.identifiers?.machineGuid || null,
-			volume: backup.volume?.serial || null
-		}
-	};
+  const backup = readBackup();
+  if (!backup) return { exists: false };
+
+  return {
+    exists: true,
+    savedAt: backup.savedAt,
+    has: {
+      guids: Object.values(backup.identifiers || {}).some(isValidGuid),
+      mac: (backup.adapters || []).length > 0,
+      volume: Boolean(backup.volume && backup.volume.sector)
+    },
+    serials: {
+      machineGuid: backup.identifiers?.machineGuid || null,
+      volume: backup.volume?.serial || null
+    }
+  };
 }
 
-//? selective revert (new :steamhappy:)
+async function spoofIdentifiers(opts = {}) {
+  const guids = opts.guids !== false;
+  const volume = opts.volume === true;
+  await createBackup({ noVolume: !volume, ensureVolume: volume });
+
+  const results = [];
+
+  if (guids) {
+    for (const [name, spec] of Object.entries(IDENTIFIERS)) {
+      const fresh = generateGuid({ braces: spec.braces, upper: spec.upper });
+      try {
+        await regWrite(spec.hive, spec.key, spec.value, fresh);
+        results.push({ name, value: fresh, ok: true });
+      } catch (error) {
+        results.push({ name, value: fresh, ok: false, error: error.message });
+      }
+    }
+  }
+
+  if (volume) {
+    const outcome = await spoofVolumeSerial();
+    results.push({
+      name: 'volumeSerial',
+      value: outcome.serial || null,
+      ok: outcome.ok,
+      error: outcome.error,
+      reboot: outcome.reboot
+    });
+  }
+
+  return results;
+}
+
 async function restoreIdentifiers(opts = {}) {
-	const backup = readBackup();
-	if (!backup) return { ok: false, reason: 'no-backup' };
+  const backup = readBackup();
+  if (!backup) return { ok: false, reason: 'no-backup' };
 
-	const info = backupInfo();
-	const { guids = true, mac = true, volume = true } = opts;
-	const results = { identifiers: [], adapters: [], errors: [] };
+  const info = backupInfo();
+  const guids = opts.guids !== false;
+  const mac = opts.mac !== false;
+  const volume = opts.volume !== false;
 
-	if (guids) {
-		for (const [name, spec] of Object.entries(IDENTIFIERS)) {
-			const original = backup.identifiers?.[name];
-			if (!isValidGuid(original)) {
-				results.identifiers.push({ name, restored: false, reason: 'missing-or-invalid' });
-				continue;
-			}
-			try {
-				await regWrite(spec.hive, spec.key, spec.value, original);
-				results.identifiers.push({ name, restored: true });
-			} catch (e) {
-				results.identifiers.push({ name, restored: false, reason: e.message });
-				results.errors.push(`${name}: ${e.message}`);
-			}
-		}
-	}
+  const results = { identifiers: [], adapters: [], errors: [] };
 
-	if (mac) {
-		for (const adapter of backup.adapters || []) {
-			try {
-				if (adapter.NetworkAddress) {
-					await setNetworkAddress(adapter.Desc, adapter.NetworkAddress);
-				} else {
-					await clearNetworkAddress(adapter.Desc);
-				}
-				await cycleAdapter(adapter.Name);
-				results.adapters.push({ name: adapter.Name, restored: true });
-			} catch (e) {
-				results.adapters.push({ name: adapter.Name, restored: false, reason: e.message });
-				results.errors.push(`${adapter.Name}: ${e.message}`);
-			}
-		}
-	}
+  if (guids) {
+    for (const [name, spec] of Object.entries(IDENTIFIERS)) {
+      const original = backup.identifiers?.[name];
+      if (!isValidGuid(original)) {
+        results.identifiers.push({ name, restored: false, reason: 'missing-or-invalid' });
+        continue;
+      }
+      try {
+        await regWrite(spec.hive, spec.key, spec.value, original);
+        results.identifiers.push({ name, restored: true });
+      } catch (error) {
+        results.identifiers.push({ name, restored: false, reason: error.message });
+        results.errors.push(`${name}: ${error.message}`);
+      }
+    }
+  }
 
-	if (volume && backup.volume) {
-		//? rewrite the original boot sector
-		const vol = await restoreVolumeSerial(backup.volume);
-		results.volume = vol;
-		if (vol.restored === false && vol.reason && vol.reason !== 'no-sector') {
-			results.errors.push(`volume ${vol.drive}: ${vol.reason}`);
-		}
-	}
+  if (mac) {
+    for (const adapter of backup.adapters || []) {
+      try {
+        let guid = adapter.guid || adapter.Guid;
 
-	//? drop the backup only when every category it holds was selected AND restored cleanly
-	//? a partial / failed restore keeps the originals so the user can revert the rest later
-	const coveredEverything =
-		(guids || !info.has.guids) &&
-		(mac || !info.has.mac) &&
-		(volume || !info.has.volume);
-	const ok = results.errors.length === 0;
-	if (ok && coveredEverything) {
-		try {
-			await fsp.unlink(getBackupPath());
-		} catch (e) {}
-	}
+        // Backups created before 0.4 only stored the adapter description.
+        if (!guid) {
+          const list = await adapterService.listAdapters();
+          const description = adapter.Desc || adapter.description;
+          const match = list.find((entry) => (
+            (description && entry.description === description)
+            || (adapter.Name && entry.name === adapter.Name)
+          ));
+          guid = match?.guid || null;
+        }
 
-	return { ok, coveredEverything, ...results };
+        if (!guid) {
+          results.adapters.push({ name: adapter.name || adapter.Name, restored: false, reason: 'missing-guid' });
+          continue;
+        }
+
+        const networkAddress = adapter.networkAddress || adapter.NetworkAddress || null;
+        const outcome = networkAddress
+          ? await adapterService.spoofAdapter(guid, networkAddress)
+          : await adapterService.resetAdapter(guid);
+
+        if (!outcome.ok) {
+          results.adapters.push({ name: adapter.name || adapter.Name, restored: false, reason: outcome.error });
+          results.errors.push(`${adapter.name || adapter.Name}: ${outcome.error}`);
+          continue;
+        }
+
+        await adapterService.restartAdapter(guid);
+        results.adapters.push({ name: adapter.name || adapter.Name, restored: true });
+      } catch (error) {
+        results.adapters.push({ name: adapter.name || adapter.Name, restored: false, reason: error.message });
+        results.errors.push(`${adapter.name || adapter.Name}: ${error.message}`);
+      }
+    }
+  }
+
+  if (volume && backup.volume) {
+    results.volume = await restoreVolumeSerial(backup.volume);
+    if (results.volume.restored === false && results.volume.reason && results.volume.reason !== 'no-sector') {
+      results.errors.push(`volume ${results.volume.drive}: ${results.volume.reason}`);
+    }
+  }
+
+  const coveredEverything =
+    (guids || !info.has.guids) &&
+    (mac || !info.has.mac) &&
+    (volume || !info.has.volume);
+
+  const ok = results.errors.length === 0;
+  if (ok && coveredEverything) {
+    try {
+      await fsp.unlink(getBackupPath());
+    } catch (error) {
+      // Keep the backup if it cannot be removed.
+    }
+  }
+
+  return { ok, coveredEverything, ...results };
 }
 
-async function setNetworkAddress(adapterDesc, mac) {
-	await runPs(`
-		$a = Get-ItemProperty "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Class\\{4d36e972-e325-11ce-bfc1-08002be10318}\\0*" -ErrorAction SilentlyContinue | Where-Object { $_.DriverDesc -eq '${psEscape(adapterDesc)}' }
-		if ($a) { Set-ItemProperty -Path $a[0].PSPath -Name "NetworkAddress" -Value "${psEscape(mac).replace(/[-:]/g, '')}" -ErrorAction Stop }
-	`);
-}
+async function detectAnticheats() {
+  if (process.platform !== 'win32') return [];
 
-async function clearNetworkAddress(adapterDesc) {
-	await runPs(`
-		$a = Get-ItemProperty "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Class\\{4d36e972-e325-11ce-bfc1-08002be10318}\\0*" -ErrorAction SilentlyContinue | Where-Object { $_.DriverDesc -eq '${psEscape(adapterDesc)}' }
-		if ($a) { Remove-ItemProperty -Path $a[0].PSPath -Name "NetworkAddress" -ErrorAction SilentlyContinue }
-	`);
-}
+  let running = { services: [], processes: [] };
+  try {
+    const { stdout } = await runPowerShell(`
+$svc = @(Get-CimInstance Win32_Service -ErrorAction SilentlyContinue | Where-Object { $_.State -eq 'Running' } | Select-Object -ExpandProperty Name)
+$proc = @(Get-Process -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name)
+ConvertTo-Json -Compress @{ services = $svc; processes = $proc }
+`, { timeout: 25_000 });
 
-async function cycleAdapter(name) {
-	await runPs(`
-		Disable-NetAdapter -Name '${psEscape(name)}' -Confirm:$false -ErrorAction Continue
-		Enable-NetAdapter -Name '${psEscape(name)}' -Confirm:$false -ErrorAction Continue
-	`);
-}
+    if (stdout) {
+      const parsed = JSON.parse(stdout);
+      running.services = (parsed.services || []).map((name) => String(name).toLowerCase());
+      running.processes = (parsed.processes || []).map((name) => String(name).toLowerCase());
+    }
+  } catch (error) {
+    return [];
+  }
 
+  const antiCheats = [
+    { name: 'Riot Vanguard', services: ['vgc', 'vgk'], processes: ['vgc', 'vgtray'] },
+    { name: 'FACEIT AC', services: ['faceit', 'faceitac'], processes: ['faceitclient', 'faceit'] },
+    { name: 'EasyAntiCheat', services: ['easyanticheat', 'easyanticheat_eos'], processes: ['easyanticheat'] },
+    { name: 'BattlEye', services: ['beservice', 'bedaisy'], processes: ['beservice'] },
+    { name: 'ESEA', services: ['eseaclient'], processes: ['eseaclient'] }
+  ];
 
-async function purgeRobloxTraces() {
-	const out = { files: 0, dirs: 0, registry: [], errors: [] };
-	const userProfile = process.env.USERPROFILE;
-	if (!userProfile) {
-		out.errors.push('USERPROFILE missing');
-		return out;
-	}
+  const detected = [];
+  for (const antiCheat of antiCheats) {
+    const service = antiCheat.services.find((name) => running.services.includes(name));
+    const process = antiCheat.processes.find((name) => running.processes.includes(name));
+    if (service || process) {
+      detected.push({
+        name: antiCheat.name,
+        service: service || null,
+        steps: [
+          { t: `Close ${antiCheat.name} before spoofing. It watches hardware identifiers.` },
+          { t: 'If it runs as a service, stop it from an elevated terminal:' },
+          { c: `sc stop ${service || antiCheat.services[0]}` }
+        ]
+      });
+    }
+  }
 
-	const robloxLocal = path.join(userProfile, 'AppData', 'Local', 'Roblox');
-	const targets = [
-		path.join(robloxLocal, 'LocalStorage'), //? client auth/cookies are here
-		path.join(robloxLocal, 'logs')          //? rather be safe than sorry
-	];
-
-	for (const dir of targets) {
-		//! every target MUST sit under the Roblox local root before we delete
-		if (path.relative(robloxLocal, dir).startsWith('..')) continue;
-		const cleared = await clearDirFiles(dir, out);
-		out.files += cleared;
-	}
-
-	for (const key of ['Software\\Roblox', 'Software\\Roblox Corporation']) {
-		const ok = await regDeleteKey('HKCU', key);
-		out.registry.push({ key: `HKCU\\${key}`, deleted: ok });
-	}
-
-	return out;
+  return detected;
 }
 
 async function clearDirFiles(dir, out) {
-	let count = 0;
-	let entries;
-	try {
-		entries = await fsp.readdir(dir, { withFileTypes: true });
-	} catch (e) {
-		return 0; //? dir absent / inaccessible
-	}
+  let count = 0;
+  let entries;
 
-	for (const entry of entries) {
-		const full = path.join(dir, entry.name);
-		try {
-			if (entry.isDirectory()) {
-				count += await clearDirFiles(full, out);
-			} else {
-				await fsp.unlink(full);
-				count++;
-			}
-		} catch (e) {
-			out.errors.push(`${full}: ${e.message}`);
-		}
-	}
-	return count;
+  try {
+    entries = await fsp.readdir(dir, { withFileTypes: true });
+  } catch (error) {
+    return 0;
+  }
+
+  for (const entry of entries) {
+    const full = path.join(dir, entry.name);
+    try {
+      if (entry.isDirectory()) count += await clearDirFiles(full, out);
+      else {
+        await fsp.unlink(full);
+        count += 1;
+      }
+    } catch (error) {
+      out.errors.push(`${full}: ${error.message}`);
+    }
+  }
+
+  return count;
+}
+
+async function purgeRobloxTraces() {
+  const out = { files: 0, dirs: 0, registry: [], errors: [] };
+  const userProfile = process.env.USERPROFILE;
+
+  if (!userProfile) {
+    out.errors.push('USERPROFILE missing');
+    return out;
+  }
+
+  const robloxLocal = path.join(userProfile, 'AppData', 'Local', 'Roblox');
+  const targets = [
+    path.join(robloxLocal, 'LocalStorage'),
+    path.join(robloxLocal, 'logs')
+  ];
+
+  for (const dir of targets) {
+    const relative = path.relative(robloxLocal, dir);
+    if (relative.startsWith('..') || path.isAbsolute(relative)) continue;
+    out.files += await clearDirFiles(dir, out);
+  }
+
+  for (const key of REGISTRY_PURGE_KEYS) {
+    const deleted = await regDeleteKey('HKCU', key);
+    out.registry.push({ key: `HKCU\\${key}`, deleted });
+  }
+
+  return out;
 }
 
 module.exports = {
-	getBackupPath,
-	backupExists,
-	isElevated,
-	generateGuid,
-	isValidGuid,
-	generateVolumeSerial,
-	readVolumeSerial,
-	spoofVolumeSerial,
-	restoreVolumeSerial,
-	createBackup,
-	createSystemRestorePoint,
-	detectAnticheats,
-	readBackup,
-	backupInfo,
-	spoofIdentifiers,
-	restoreIdentifiers,
-	purgeRobloxTraces,
-	IDENTIFIERS
+  getBackupPath,
+  backupExists,
+  isElevated,
+  generateGuid,
+  isValidGuid,
+  generateVolumeSerial,
+  readVolumeSerial,
+  getVolumeInfo,
+  readSector,
+  writeSector,
+  isBootSector,
+  vsnOffset,
+  spoofVolumeSerial,
+  restoreVolumeSerial,
+  createBackup,
+  createSystemRestorePoint,
+  detectAnticheats,
+  readBackup,
+  backupInfo,
+  spoofIdentifiers,
+  restoreIdentifiers,
+  purgeRobloxTraces,
+  IDENTIFIERS
 };

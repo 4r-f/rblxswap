@@ -1,47 +1,80 @@
+'use strict';
+
 const { contextBridge, ipcRenderer } = require('electron');
 
-const withListener = (channel, callback) => {
-  if (typeof callback !== 'function') {
-    return () => undefined;
-  }
+function subscribe(channel, callback) {
+  if (typeof callback !== 'function') return () => {};
   const wrapped = (_event, payload) => callback(payload);
   ipcRenderer.on(channel, wrapped);
   return () => ipcRenderer.removeListener(channel, wrapped);
-};
+}
+
+function invoke(channel, payload) {
+  return ipcRenderer.invoke(channel, payload);
+}
 
 contextBridge.exposeInMainWorld('launcher', {
-  version: process.versions.electron,
-  getConfig: () => ipcRenderer.invoke('get-config'),
-  setConfig: (c) => ipcRenderer.invoke('set-config', c),
-  getVersion: () => ipcRenderer.invoke('get-version'),
-  checkUpdates: () => ipcRenderer.invoke('check-updates'),
-  openExternal: (url) => ipcRenderer.invoke('open-external', url),
-  downloadUpdate: (url) => ipcRenderer.invoke('update:download', url),
-  downloadLatest: () => ipcRenderer.invoke('update:downloadLatest'),
-  onUpdateStatus: (callback) => withListener('update:status', callback),
-  selectDir: () => ipcRenderer.invoke('select-directory'),
-  scanWeblauncher: () => ipcRenderer.invoke('scan-weblauncher'),
-  hideWindow: () => ipcRenderer.invoke('hide-window'),
-  showToast: (title, message, buttons, timespan) => ipcRenderer.invoke('show-toast', { title, message, buttons, timespan }),
-  runBypass: (weblauncherDir) => ipcRenderer.invoke('bypass:run', weblauncherDir),
-  onLog: (callback) => withListener('bypass:log', callback),
-  onStatus: (callback) => withListener('bypass:status', callback),
-  onComplete: (callback) => withListener('bypass:complete', callback),
+  // app / config
+  getAppInfo: () => invoke('app:info'),
+  getConfig: () => invoke('config:get'),
+  setConfig: (config) => invoke('config:set', config),
+  resetConfig: () => invoke('config:reset'),
 
-  getAdapters: () => ipcRenderer.invoke('mac:get-adapters'),
-  getStats: () => ipcRenderer.invoke('mac:get-stats'),
-  spoofMac: (desc, mac) => ipcRenderer.invoke('mac:spoof', desc, mac),
-  resetMac: (desc) => ipcRenderer.invoke('mac:reset', desc),
-  restartAdapter: (name) => ipcRenderer.invoke('mac:restart-adapter', name),
-  dhcpRefresh: () => ipcRenderer.invoke('mac:dhcp-refresh'),
+  // window / dialogs
+  hideWindow: () => invoke('window:hide'),
+  selectDirectory: () => invoke('dialog:select-directory'),
+  scanWeblauncher: () => invoke('scan:weblauncher'),
+  showToast: (payload) => invoke('toast:show', payload),
 
-  detectAnticheat: () => ipcRenderer.invoke('hwid:detect-anticheat'),
-  createRestorePoint: (desc) => ipcRenderer.invoke('hwid:restore-point', desc),
-  hwidBackupExists: () => ipcRenderer.invoke('hwid:backup-exists'),
-  hwidBackupInfo: () => ipcRenderer.invoke('hwid:backup-info'),
-  backupHwid: () => ipcRenderer.invoke('hwid:backup'),
-  spoofHwid: (opts) => ipcRenderer.invoke('hwid:spoof', opts),
-  restoreHwid: (opts) => ipcRenderer.invoke('hwid:restore', opts),
-  purgeRoblox: () => ipcRenderer.invoke('hwid:purge-roblox')
+  // cleaner
+  planCleanup: (payload) => invoke('cleaner:plan', payload),
+  runCleanup: (payload) => invoke('cleaner:run', payload),
+  onCleanerLog: (callback) => subscribe('cleaner:log', callback),
+  onCleanerProgress: (callback) => subscribe('cleaner:progress', callback),
+  onCleanerStatus: (callback) => subscribe('cleaner:status', callback),
+
+  // spoof
+  runSpoof: (options) => invoke('spoof:run', options),
+  detectAnticheat: () => invoke('spoof:detect-anticheat'),
+  createRestorePoint: (description) => invoke('spoof:restore-point', { description }),
+  onSpoofLog: (callback) => subscribe('spoof:log', callback),
+  onSpoofProgress: (callback) => subscribe('spoof:progress', callback),
+
+  // hwid
+  hwidBackupExists: () => invoke('hwid:backup-exists'),
+  hwidBackupInfo: () => invoke('hwid:backup-info'),
+  backupHwid: () => invoke('hwid:backup'),
+  restoreHwid: (options) => invoke('hwid:restore', options),
+  purgeRoblox: () => invoke('hwid:purge-roblox'),
+
+  // adapters
+  listAdapters: () => invoke('adapters:list'),
+  spoofAdapter: (guid, mac) => invoke('adapters:spoof', { guid, mac }),
+  resetAdapter: (guid) => invoke('adapters:reset', { guid }),
+  restartAdapter: (guid) => invoke('adapters:restart', { guid }),
+  dhcpRefresh: () => invoke('network:dhcp'),
+
+  // updates
+  checkUpdates: () => invoke('updates:check'),
+  installLatest: () => invoke('updates:install-latest'),
+  onUpdateProgress: (callback) => subscribe('updates:progress', callback),
+
+  // externals / diagnostics
+  openExternal: (url) => invoke('shell:open-external', { url }),
+  openLogs: () => invoke('shell:open-logs'),
+  getLogs: () => invoke('logs:tail'),
+  getDiagnostics: () => invoke('diag:get'),
+
+  // profiles
+  listProfiles: () => invoke('profiles:list'),
+  saveProfile: (name) => invoke('profiles:save', { name }),
+  applyProfile: (name) => invoke('profiles:apply', { name }),
+  deleteProfile: (name) => invoke('profiles:delete', { name }),
+
+  // theme
+  exportTheme: () => invoke('theme:export'),
+  importTheme: () => invoke('theme:import'),
+
+  // main-process commands (tray/toast)
+  onCommand: (callback) => subscribe('app:command', callback)
 });
-
