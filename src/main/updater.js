@@ -456,17 +456,24 @@ Start-Sleep -Seconds 8
   await fsp.writeFile(batPath, bat, 'utf8');
 
   const { spawn } = require('child_process');
-  const child = spawn('cmd.exe', ['/c', batPath], {
-    detached: true,
-    windowsHide: true,
-    stdio: 'ignore',
-    env: {
-      ...process.env,
-      UPDATE_SRC: file,
-      UPDATE_DST: target
-    }
-  });
-  child.unref();
+
+  try {
+    const child = spawn('cmd.exe', ['/c', batPath], {
+      detached: true,
+      windowsHide: true,
+      stdio: 'ignore',
+      env: {
+        ...process.env,
+        UPDATE_SRC: file,
+        UPDATE_DST: target
+      }
+    });
+
+    child.on('error', (error) => log('error', `Update helper failed: ${error.message}`));
+    child.unref();
+  } catch (error) {
+    return { ok: false, error: error.message };
+  }
 
   log('info', `Update helper started for ${path.basename(target)}`);
   return { ok: true, target };

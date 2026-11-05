@@ -152,6 +152,8 @@ async function runCli({ argv, configStore, logger, version }) {
         failed: result.result?.failed?.length ?? 0
       };
 
+      if (out.clean.failed > 0) out.ok = false;
+
       if (result.dryRun) {
         for (const step of result.plan.steps) {
           human(`- ${step.label}: ${step.count} file(s), ${step.bytes} byte(s)`);

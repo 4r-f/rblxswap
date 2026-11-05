@@ -344,7 +344,14 @@ function createIpc({
         };
       }
 
-      await updater.applyUpdate(prepared.file, { log: (level, message) => logger.append(level, message) });
+      const applied = await updater.applyUpdate(prepared.file, {
+        log: (level, message) => logger.append(level, message)
+      });
+
+      if (!applied.ok) {
+        return { ok: false, error: applied.error || 'update-apply-failed' };
+      }
+
       requestQuit();
       return { ok: true, packaged: true, version: check.version, verifiedBy: prepared.verifiedBy };
     } finally {
