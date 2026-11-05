@@ -109,6 +109,32 @@
     </div>
   </div>
 
+  <!-- help / onboarding -->
+  <div id="helpModal" class="modal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
+    <div class="modal-card wide">
+      <h2 id="helpTitle" data-i18n="help.title">How does it work?</h2>
+      <ol class="help-steps">
+        <li data-i18n="help.step1"></li>
+        <li data-i18n="help.step2"></li>
+        <li data-i18n="help.step3"></li>
+      </ol>
+      <p class="muted small" data-i18n="help.note"></p>
+      <button type="button" class="btn-primary" data-action="close-help" data-i18n="help.close">Got it</button>
+    </div>
+  </div>
+
+  <!-- admin -->
+  <div id="adminModal" class="modal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="adminTitle">
+    <div class="modal-card">
+      <h2 id="adminTitle" data-i18n="admin.title">Administrator rights required</h2>
+      <p data-i18n="admin.desc"></p>
+      <div class="row">
+        <button type="button" data-action="close-admin" data-i18n="admin.cancel">Clean without admin</button>
+        <button type="button" class="btn-primary" data-action="relaunch-admin" data-i18n="admin.relaunch">Restart as administrator</button>
+      </div>
+    </div>
+  </div>
+
   <div class="app-wrapper">
     <div id="tooltip" role="tooltip"></div>
 
@@ -118,6 +144,7 @@
         <span class="logo-text">rblxswap</span>
       </div>
       <div class="ctrls">
+        <button type="button" class="sys-btn help" data-action="open-help" data-tooltip="Help" aria-label="Help">?</button>
         <button type="button" class="sys-btn" data-action="show-view" data-arg="settings" data-tooltip="Settings" aria-label="Settings">
           <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="3"></circle>
@@ -139,29 +166,35 @@
         <h1 data-i18n="home.title">Ready to swap?</h1>
         <p data-i18n="home.desc">Review what will be removed, then clean traces.</p>
 
+        <div id="adminBanner" class="admin-banner" style="display:none">
+          <span data-i18n="home.adminBanner">Spoofing needs administrator rights.</span>
+          <button type="button" data-action="relaunch-admin" data-i18n="home.adminButton">Restart as administrator</button>
+        </div>
+
+        <button type="button" class="btn-primary btn-hero" data-action="quick-start">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z"></path>
+          </svg>
+          <span data-i18n="home.quick">One-click setup</span>
+        </button>
+        <p class="hint" data-i18n="home.quickHint"></p>
+
         <div class="row">
-          <button type="button" class="btn-primary" data-action="start-scan">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M3 6h18"></path><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"></path>
-              <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-              <line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line>
-            </svg>
-            <span data-i18n="home.scan">Scan & Clean</span>
-          </button>
-          <button type="button" data-action="open-spoof">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
-              <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
-              <line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line>
-            </svg>
-            <span data-i18n="home.spoof">Spoof</span>
-          </button>
+          <button type="button" data-action="start-scan" data-i18n="home.cleanOnly">Clean only</button>
+          <button type="button" data-action="open-spoof" data-i18n="home.spoofOnly">Spoof only</button>
+        </div>
+
+        <div id="healthRow" class="health-row" aria-live="polite">
+          <span id="healthAdmin" class="health-chip">…</span>
+          <span id="healthRoblox" class="health-chip">…</span>
+          <span id="healthBackup" class="health-chip">…</span>
         </div>
 
         <div class="links">
           <a id="home_revert_btn" data-action="revert" data-tooltip="Restores MACs and hardware identifiers from the backup.">
             <span data-i18n="home.revert">Revert spoof & restore identifiers</span>
           </a>
+          <a data-action="open-help" data-i18n="home.help">How does it work?</a>
         </div>
 
         <div id="backupStatus" class="backup-status">
@@ -183,8 +216,9 @@
 
       <!-- post -->
       <section id="view_post" class="view">
-        <h1 class="good-text" data-i18n="post.title">Sweep complete</h1>
-        <p data-i18n="post.desc">Spoof your hardware identifiers for extra safety?</p>
+        <h1 id="postTitle" class="good-text" data-i18n="post.doneTitle">You are ready</h1>
+        <p id="postDesc" data-i18n="post.doneDesc">You can open Roblox now.</p>
+        <p id="postReboot" class="reboot-note" style="display:none" data-i18n="post.reboot"></p>
         <p class="muted small" data-i18n="post.tip">Tip: clear your roblox.com cookies and use a VPN.</p>
         <p class="tiny muted" data-i18n="post.discord">Need throwaway alts? Join the WEAO Discord.</p>
         <div class="row">
@@ -207,6 +241,10 @@
         </div>
 
         <div id="tab_general">
+          <div class="row tight" style="margin-bottom:8px">
+            <button type="button" data-action="apply-recommended" data-i18n="settings.recommended">Recommended settings</button>
+            <button type="button" data-action="open-help" data-i18n="settings.help">How to use</button>
+          </div>
           <div class="fgrid">
             <label data-i18n="settings.launcher">Launcher type</label>
             <label class="radio-opt">
@@ -256,6 +294,10 @@
             <div class="switch-row">
               <span data-i18n="settings.autoClean">Clean automatically when Roblox closes</span>
               <label class="switch"><input type="checkbox" id="chkAutoClean"><span class="slider"></span></label>
+            </div>
+            <div class="switch-row">
+              <span data-i18n="settings.quickSpoof">Spoof automatically after cleaning</span>
+              <label class="switch"><input type="checkbox" id="chkQuickSpoof"><span class="slider"></span></label>
             </div>
             <div class="switch-row">
               <span data-i18n="settings.watcher">Watch Roblox process</span>
@@ -314,6 +356,10 @@
                 <option value="stable" data-i18n="settings.stable">Stable</option>
                 <option value="beta" data-i18n="settings.beta">Beta</option>
               </select>
+            </div>
+            <div class="field-row">
+              <span data-i18n="settings.repo">Update repository (owner/repo)</span>
+              <input type="text" id="inpUpdateRepo" placeholder="owner/repo" maxlength="100" spellcheck="false">
             </div>
             <div class="switch-row">
               <span data-i18n="settings.allowUnsigned">Allow unsigned updates</span>

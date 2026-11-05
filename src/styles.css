@@ -1074,3 +1074,121 @@ button.sys-btn:hover { transform: none; background: var(--sys-hover); }
 /* Small screens / scrollbar hide */
 .app-wrapper { scrollbar-width: none; }
 .app-wrapper::-webkit-scrollbar { display: none; }
+
+/* ============================================================
+   v0.5 beginner mode: one-click, health chips, help
+   ============================================================ */
+
+#view_home h1 { font-size: 1.12rem; margin-bottom: 4px; }
+#view_home p { font-size: .74rem; margin-bottom: 8px; }
+
+.btn-hero {
+    width: 100%;
+    padding: 14px 18px;
+    font-size: .95rem;
+    font-weight: 600;
+    border-radius: 14px;
+    color: var(--text-main);
+    background: linear-gradient(135deg, rgba(74, 222, 128, .26), rgba(59, 246, 131, .10));
+    border: 1px solid rgba(74, 222, 128, .45);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, .35);
+}
+.btn-hero:hover {
+    background: linear-gradient(135deg, rgba(74, 222, 128, .34), rgba(59, 246, 131, .16));
+    border-color: rgba(74, 222, 128, .65);
+    transform: translateY(-1px);
+}
+.btn-hero svg { color: var(--good); }
+
+.hint {
+    font-size: .62rem;
+    color: var(--text-dim);
+    line-height: 1.4;
+    margin: 6px 0 10px 0;
+    text-align: center;
+}
+
+.admin-banner {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    align-items: center;
+    background: rgba(245, 158, 11, .10);
+    border: 1px solid rgba(245, 158, 11, .30);
+    border-radius: 10px;
+    padding: 8px 10px;
+    margin-bottom: 10px;
+    font-size: .64rem;
+    color: #f5a623;
+}
+.admin-banner button {
+    padding: 5px 10px;
+    font-size: .64rem;
+    border-radius: 8px;
+}
+
+.health-row {
+    display: flex;
+    gap: 6px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin: 8px 0;
+}
+.health-chip {
+    font-size: .56rem;
+    padding: 3px 7px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    background: var(--bg-accent);
+    white-space: nowrap;
+}
+.health-chip.ok {
+    color: var(--good);
+    border-color: rgba(74, 222, 128, .35);
+    background: rgba(74, 222, 128, .08);
+}
+.health-chip.warn {
+    color: #f5a623;
+    border-color: rgba(245, 158, 11, .35);
+    background: rgba(245, 158, 11, .08);
+}
+.health-chip.bad {
+    color: var(--bad);
+    border-color: rgba(248, 113, 113, .35);
+    background: rgba(248, 113, 113, .08);
+}
+
+.links {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    align-items: center;
+    margin-top: 10px;
+}
+
+.help-steps {
+    text-align: left;
+    padding-left: 18px;
+    margin: 10px 0;
+    font-size: .74rem;
+    line-height: 1.5;
+    color: #ccc;
+}
+.help-steps li { margin-bottom: 8px; }
+
+.reboot-note {
+    background: rgba(245, 158, 11, .10);
+    border: 1px solid rgba(245, 158, 11, .30);
+    border-radius: 8px;
+    padding: 8px;
+    font-size: .68rem;
+    color: #f5a623;
+    line-height: 1.4;
+}
+
+.sys-btn.help {
+    font-size: .78rem;
+    font-weight: 700;
+    color: var(--text-dim);
+}

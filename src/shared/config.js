@@ -30,6 +30,8 @@ const DEFAULT_CONFIG = Object.freeze({
   spoofMode: 'simple',
   autoCleanOnExit: false,
   watcherEnabled: true,
+  quickSpoof: true,
+  onboardingDone: false,
   language: 'en',
   updates: { channel: 'stable', repo: DEFAULT_UPDATE_REPO, allowUnsigned: false },
   theme: { ...DEFAULT_THEME },
@@ -121,6 +123,8 @@ function sanitizeConfig(input) {
     spoofMode: source.spoofMode === 'advanced' ? 'advanced' : 'simple',
     autoCleanOnExit: asBoolean(source.autoCleanOnExit, false),
     watcherEnabled: asBoolean(source.watcherEnabled, true),
+    quickSpoof: asBoolean(source.quickSpoof, true),
+    onboardingDone: asBoolean(source.onboardingDone, false),
     language: source.language === 'tr' ? 'tr' : 'en',
     updates: {
       channel: source.updates?.channel === 'beta' ? 'beta' : 'stable',

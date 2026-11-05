@@ -1,5 +1,6 @@
 'use strict';
 
+const fs = require('fs');
 const path = require('path');
 const { execFile } = require('child_process');
 
@@ -342,7 +343,18 @@ function createApplication() {
 
   app.whenReady().then(async () => {
     const userData = app.getPath('userData');
+    const configFile = path.join(userData, 'config.json');
+    const firstRun = !fs.existsSync(configFile);
+
     state.configStore = createConfigStore({ dir: userData });
+    state.configStore.get();
+
+    // First launch: follow the OS language instead of forcing English.
+    if (firstRun) {
+      const locale = String(app.getLocale() || 'en').toLowerCase();
+      if (locale.startsWith('tr')) state.configStore.set({ language: 'tr' });
+    }
+
     state.logger = createLogger({
       dir: path.join(userData, 'logs'),
       maxBytes: LOG_MAX_BYTES,

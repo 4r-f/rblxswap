@@ -10,6 +10,7 @@ const cleaner = require('./cleaner');
 const updater = require('./updater');
 const spoof = require('./spoof');
 const { createDiagnostics } = require('./diagnostics');
+const { runCommand, runPowerShell } = require('../shared/powershell');
 const { isSafeExternalUrl } = require('../shared/security');
 const { sanitizeTheme } = require('../shared/config');
 const { WEBLAUNCHER_MARKERS } = require('../shared/constants');
@@ -90,6 +91,54 @@ function createIpc({
   }
 
   // --- app / config -------------------------------------------------------
+  ipcMain.handle('app:health', guarded(async () => {
+    let robloxRunning = false;
+
+    if (process.platform === 'win32') {
+      try {
+        const { stdout } = await runCommand(
+          'tasklist',
+          ['/FI', 'IMAGENAME eq RobloxPlayerBeta.exe', '/NH'],
+          { timeout: 8000 }
+        );
+        robloxRunning = /RobloxPlayerBeta\.exe/i.test(stdout);
+      } catch (error) {
+        robloxRunning = false;
+      }
+    }
+
+    return {
+      ok: true,
+      version: app.getVersion(),
+      platform: process.platform,
+      elevated: process.platform === 'win32' ? await hwid.isElevated() : null,
+      robloxRunning,
+      backupExists: hwid.backupExists()
+    };
+  }));
+
+  ipcMain.handle('app:relaunch-admin', guarded(async () => {
+    if (process.platform !== 'win32') {
+      return { ok: false, error: 'unsupported-platform' };
+    }
+
+    const executable = process.env.PORTABLE_EXECUTABLE_FILE || process.execPath;
+    const args = app.isPackaged ? '' : app.getAppPath();
+
+    await runPowerShell(`
+$args = $env:APP_ARGS
+if ([string]::IsNullOrWhiteSpace($args)) {
+  Start-Process -FilePath $env:APP_EXE -Verb RunAs
+} else {
+  Start-Process -FilePath $env:APP_EXE -ArgumentList $args -Verb RunAs
+}
+Write-Output 'OK'
+`, { env: { APP_EXE: executable, APP_ARGS: args }, timeout: 20_000 });
+
+    requestQuit();
+    return { ok: true };
+  }));
+
   ipcMain.handle('app:info', guarded(async () => {
     const window = getWindow();
     return {

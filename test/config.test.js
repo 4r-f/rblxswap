@@ -21,6 +21,8 @@ test('config store starts from sanitized defaults and writes the file', () => {
   assert.equal(config.launcherType, 'default');
   assert.equal(config.spoofTargets.mac, true);
   assert.equal(config.spoofTargets.volume, false);
+  assert.equal(config.quickSpoof, true);
+  assert.equal(config.onboardingDone, false);
   assert.equal(fs.existsSync(store.file), true);
 
   fs.rmSync(dir, { recursive: true, force: true });

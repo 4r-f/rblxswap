@@ -3,6 +3,25 @@
 All notable changes to rblxswap are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.5.0] - 2026-11-05
+
+### Added
+
+- **One-click setup**: clean + MAC + HWID with safe defaults, a single confirm and a final “You are ready” screen.
+- **First-run onboarding** and a permanent help screen in the header.
+- **Health chips** for administrator rights, running Roblox and backup availability.
+- **Restart as administrator** (UAC) from the banner and the admin modal.
+- **Automatic language detection** on first launch (Turkish systems start in Turkish).
+- **Update repository field** in Settings; the default is derived from `package.json` `repository` (or `RBLXSWAP_UPDATE_REPO`).
+- Optional **auto-spoof after cleaning** toggle (`quickSpoof`, default on).
+
+### Changed
+
+- Home screen is now beginner-first: one big primary action, “Clean only” / “Spoof only” secondary, revert and help links.
+- The post-clean screen reports whether spoofing ran and whether a reboot is required.
+- Settings gained a “Recommended settings” reset button.
+- Version bumped to 0.5.0; the updater now points at the fork by default.
+
 ## [0.4.0] - 2026-11-05
 
 ### Added

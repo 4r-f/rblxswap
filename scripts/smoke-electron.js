@@ -33,6 +33,15 @@ handle('app:info', {
   config,
   paths: { config: '', logs: '', backup: '', userData: '' }
 });
+handle('app:health', {
+  ok: true,
+  version: '0.5.0-smoke',
+  platform: process.platform,
+  elevated: true,
+  robloxRunning: false,
+  backupExists: false
+});
+handle('app:relaunch-admin', { ok: true });
 handle('config:get', { ok: true, config });
 handle('config:set', { ok: true, config });
 handle('config:reset', { ok: true, config });
@@ -130,10 +139,23 @@ app.whenReady().then(async () => {
   console.log('SWITCH', JSON.stringify(switched));
   if (switched.active !== 'view_settings') fail(`settings view did not open: ${switched.active}`);
 
+  await new Promise((resolve) => setTimeout(resolve, 700));
+  const onboarding = await window.webContents.executeJavaScript(`(() => ({
+    helpOpen: document.getElementById('helpModal').style.display,
+    health: document.getElementById('healthAdmin').textContent,
+    banner: document.getElementById('adminBanner').style.display
+  }))()`);
+
+  console.log('ONBOARDING', JSON.stringify(onboarding));
+  if (onboarding.helpOpen !== 'flex') fail(`first-run help did not open (${onboarding.helpOpen})`);
+  if (!/Admin/i.test(onboarding.health)) fail(`health chip missing admin state (${onboarding.health})`);
+  if (onboarding.banner !== 'none') fail(`admin banner should be hidden when elevated (${onboarding.banner})`);
+
   const flow = await window.webContents.executeJavaScript(`(async () => {
+    document.querySelector('[data-action="close-help"]').click();
     document.querySelector('[data-action="show-view"][data-arg="home"]').click();
-    document.querySelector('[data-action="start-scan"]').click();
-    await new Promise((resolve) => setTimeout(resolve, 250));
+    document.querySelector('[data-action="quick-start"]').click();
+    await new Promise((resolve) => setTimeout(resolve, 300));
     const planOpen = document.getElementById('planModal').style.display;
     const rows = document.querySelectorAll('.plan-row').length;
     document.querySelector('[data-action="close-modal"][data-arg="planModal"]').click();
@@ -142,7 +164,8 @@ app.whenReady().then(async () => {
       planOpen,
       rows,
       macActive: document.querySelector('.view.active')?.id,
-      targets: document.getElementById('chkSpoofMac')?.checked
+      targets: document.getElementById('chkSpoofMac')?.checked,
+      helpClosed: document.getElementById('helpModal').style.display
     };
   })()`);
 
@@ -151,6 +174,7 @@ app.whenReady().then(async () => {
   if (flow.rows !== 1) fail(`plan rows wrong (${flow.rows})`);
   if (flow.macActive !== 'view_mac') fail(`spoof view did not open (${flow.macActive})`);
   if (flow.targets !== true) fail('MAC target should default to checked');
+  if (flow.helpClosed !== 'none') fail(`help modal did not close (${flow.helpClosed})`);
 
   const translated = await window.webContents.executeJavaScript(`(() => {
     window.setLanguage ? window.setLanguage('tr') : null;

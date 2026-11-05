@@ -23,12 +23,14 @@
 | **Volume serial** | Optionally patches the VSN field in the boot sector (512e and 4Kn aware, BitLocker aware, hash-verified backup). |
 | **Backup / restore** | Everything is snapshotted to `backup.json` before the first write; selective restore from the UI. |
 
-## What's new in v0.4
+## What's new in v0.5
 
+- **One-click setup**: cleans traces, then rotates MAC + hardware IDs with safe defaults. No settings required.
+- **First-run guide**: a 3-step help screen, plain-language labels, health chips (admin / Roblox / backup) and “Restart as administrator”.
 - **Dry-run preview**: nothing is deleted before you see the file count, size, admin requirements and warnings.
 - **Safer deletes**: recycle bin support, strict temp-folder allow-list, marker check for the WebLauncher folder.
 - **Hardened updater**: HTTP status/timeout handling, redirect limit, size cap, SHA-256 (`SHA256SUMS.txt`) or Authenticode verification, unsigned updates rejected by default.
-- **Security fixes**: no inline event handlers, strict CSP, URL allow-list for external links, no PowerShell string interpolation, `sandbox: true`, single-instance lock, permission handler that denies everything.
+- **Security fixes**: no inline event handlers, strict CSP, URL allow-list for external links, no PowerShell string interpolation, `sandbox: true`, single-instance lock.
 - **Safer HWID**: 4Kn sector support, BitLocker refusal, read-back verification, atomic `backup.json`, restore-point throttle restored after use.
 - **Quality**: modular main process (`src/main/*`), 36 unit tests (`node --test`), custom lint, GitHub Actions CI, CLI mode, profiles, diagnostics, EN/TR UI.
 
@@ -41,9 +43,11 @@
 ## Usage
 
 1. Download the latest `rblxswap.exe` from Releases and run it as administrator.
-2. **Scan & Clean** — review the plan, then confirm.
-3. **Spoof** — choose MAC / hardware IDs / volume serial, run it, reboot if the volume serial was changed.
+2. Click **One-click setup**. Review the summary and confirm.
+3. Wait for the progress bar. If the disk serial changed, restart Windows.
 4. Use **Revert spoof & restore identifiers** to restore from the backup.
+
+Advanced users can still run **Clean only** / **Spoof only** or the CLI.
 
 ## CLI
 
@@ -74,7 +78,7 @@ Backup: `backup.json` next to the executable (fallback: `%LOCALAPPDATA%\rblxswap
 
 ## Updates
 
-The updater reads `updates.repo` (default `hackyue/rblxswap`) and verifies the downloaded file in this order:
+The updater reads `updates.repo` (default: the `repository` field in `package.json`, i.e. `4r-f/rblxswap`) and verifies the downloaded file in this order:
 
 1. GitHub asset `digest` (SHA-256)
 2. `SHA256SUMS.txt` (or `checksums.txt`) release asset

@@ -22,7 +22,10 @@ const state = {
   updateUrl: null,
   view: 'home',
   settingsTab: 'general',
-  busy: false
+  busy: false,
+  health: null,
+  quickMode: false,
+  logTarget: 'mac'
 };
 
 let colorPicker = null;
@@ -88,7 +91,15 @@ function closeModal(id) {
 
 function closeTopModal() {
   const open = Array.from(document.querySelectorAll('.modal')).filter((modal) => modal.style.display === 'flex');
-  if (open.length) closeModal(open[open.length - 1].id);
+  if (!open.length) return;
+
+  const top = open[open.length - 1];
+  if (top.id === 'helpModal') {
+    closeHelp();
+    return;
+  }
+
+  closeModal(top.id);
 }
 
 function mlog(message, color = '#888') {
@@ -209,7 +220,10 @@ function showView(id) {
 
   if (id === 'settings') loadSettingsUI();
   if (id === 'mac') loadAdapters(true);
-  if (id === 'home') refreshBackupStatus();
+  if (id === 'home') {
+    refreshBackupStatus();
+    refreshHealth();
+  }
 }
 
 function switchSettingsTab(name) {
@@ -258,6 +272,7 @@ function loadSettingsUI() {
   bind('chkMinimizeClose', config.minimizeClose);
   bind('chkUseTrash', config.useTrash !== false);
   bind('chkAutoClean', config.autoCleanOnExit);
+  bind('chkQuickSpoof', config.quickSpoof !== false);
   bind('chkWatcher', config.watcherEnabled !== false);
   bind('chkPreserveSettings', config.preserveSettings);
   bind('chkPreserveFastflags', config.preserveFastflags);
@@ -270,6 +285,8 @@ function loadSettingsUI() {
   if (language) language.value = config.language || 'en';
   const channel = $('selChannel');
   if (channel) channel.value = config.updates?.channel || 'stable';
+  const repo = $('inpUpdateRepo');
+  if (repo) repo.value = config.updates?.repo || '';
 
   refreshFolderLabel();
 
@@ -297,6 +314,12 @@ async function saveSettings() {
     return;
   }
 
+  const repo = String($('inpUpdateRepo')?.value || '').trim();
+  if (repo && !/^[\w.-]+\/[\w.-]+$/.test(repo)) {
+    toast(t('toast.error'), t('settings.repo'));
+    return;
+  }
+
   const payload = {
     launcherType,
     spoofMode,
@@ -304,6 +327,7 @@ async function saveSettings() {
     minimizeClose: $('chkMinimizeClose')?.checked ?? true,
     useTrash: $('chkUseTrash')?.checked ?? true,
     autoCleanOnExit: $('chkAutoClean')?.checked ?? false,
+    quickSpoof: $('chkQuickSpoof')?.checked ?? true,
     watcherEnabled: $('chkWatcher')?.checked ?? true,
     preserveSettings: $('chkPreserveSettings')?.checked ?? false,
     preserveFastflags: $('chkPreserveFastflags')?.checked ?? false,
@@ -314,7 +338,8 @@ async function saveSettings() {
     updates: {
       ...state.config.updates,
       channel: $('selChannel')?.value || 'stable',
-      allowUnsigned: $('chkAllowUnsigned')?.checked ?? false
+      allowUnsigned: $('chkAllowUnsigned')?.checked ?? false,
+      repo: repo || state.config.updates.repo
     }
   };
 
@@ -561,6 +586,7 @@ async function runSpoofFlow() {
 }
 
 async function performSpoof(targets) {
+  state.logTarget = 'mac';
   closeModal('anticheatModal');
   showView('mac');
 
@@ -590,6 +616,7 @@ async function performSpoof(targets) {
   }
 
   await refreshBackupStatus();
+  await refreshHealth();
 }
 
 async function revert() {
@@ -613,6 +640,216 @@ async function revert() {
     toast(t('toast.saved'), errors ? `${errors} error(s)` : t('common.done'));
     await refreshBackupStatus();
   });
+}
+
+function setHealthChip(element, text, status) {
+  if (!element) return;
+  element.textContent = text;
+  element.className = `health-chip${status ? ` ${status}` : ''}`;
+}
+
+async function refreshHealth() {
+  let result;
+  try {
+    result = await api.getHealth();
+  } catch (error) {
+    return null;
+  }
+  if (!result?.ok) return null;
+
+  state.health = result;
+
+  if (result.elevated === true) {
+    setHealthChip($('healthAdmin'), `${t('home.health.admin')}: ${t('home.health.ok')}`, 'ok');
+  } else if (result.elevated === false) {
+    setHealthChip($('healthAdmin'), `${t('home.health.admin')}: ${t('home.health.no')}`, 'bad');
+  } else {
+    setHealthChip($('healthAdmin'), `${t('home.health.admin')}: ${t('home.health.unknown')}`, '');
+  }
+
+  setHealthChip(
+    $('healthRoblox'),
+    `${t('home.health.roblox')}: ${result.robloxRunning ? t('home.health.robloxOpen') : t('home.health.robloxClosed')}`,
+    result.robloxRunning ? 'warn' : 'ok'
+  );
+
+  setHealthChip(
+    $('healthBackup'),
+    `${t('home.health.backup')}: ${result.backupExists ? t('home.health.backupYes') : t('home.health.backupNo')}`,
+    result.backupExists ? 'ok' : ''
+  );
+
+  const banner = $('adminBanner');
+  if (banner) banner.style.display = result.elevated === false ? 'flex' : 'none';
+
+  return result;
+}
+
+async function quickStart() {
+  if (state.busy) return;
+
+  const health = await refreshHealth();
+
+  if (health?.elevated === false) {
+    openModal('adminModal');
+    return;
+  }
+
+  if (health?.robloxRunning) {
+    openConfirm(t('quick.robloxTitle'), t('quick.robloxMsg'), () => planCleanupAndShow(true));
+    return;
+  }
+
+  await planCleanupAndShow(true);
+}
+
+async function planCleanupAndShow(quick) {
+  if (state.busy) return;
+
+  if (state.config.launcherType === 'weao' && !state.config.weblauncherDir) {
+    showView('settings');
+    toast(t('toast.error'), 'Select the WebLauncher folder first');
+    return;
+  }
+
+  state.busy = true;
+  state.quickMode = Boolean(quick);
+  setStatus('Scanning...');
+
+  try {
+    const result = await api.planCleanup({ weblauncherDir: state.config.weblauncherDir });
+    const plan = result?.plan;
+
+    if (!plan || !plan.steps?.length) {
+      toast(t('plan.title'), t('plan.empty'));
+      return;
+    }
+
+    state.quickMode = Boolean(quick);
+    state.plan = plan;
+    renderPlan(plan);
+    openModal('planModal');
+  } finally {
+    state.busy = false;
+    setStatus(t('home.status.ready'));
+  }
+}
+
+async function quickSpoofStep() {
+  state.logTarget = 'loader';
+
+  const title = $('loaderTitle');
+  const desc = $('loaderDesc');
+  const bar = $('loaderBar');
+  if (title) {
+    title.textContent = t('quick.spoofing');
+    title.style.color = 'var(--text-main)';
+  }
+  if (desc) desc.textContent = t('mac.targets');
+  if (bar) bar.style.width = '45%';
+
+  const result = await api.runSpoof({
+    targets: { mac: true, hwid: true, volume: false },
+    allAdapters: true,
+    mac: null,
+    mirror: true,
+    dhcp: false
+  });
+
+  state.logTarget = 'mac';
+  if (bar) bar.style.width = '100%';
+
+  await refreshHealth();
+  await refreshBackupStatus();
+
+  const spoofed = Boolean(result?.ok);
+  const reboot = Boolean(result?.needsReboot);
+
+  state.quickMode = false;
+
+  const postTitle = $('postTitle');
+  const postDesc = $('postDesc');
+  const postReboot = $('postReboot');
+
+  if (postTitle) postTitle.textContent = t('quick.doneTitle');
+  if (postDesc) postDesc.textContent = spoofed ? t('quick.doneDesc') : t('quick.spoofFailed');
+  if (postReboot) postReboot.style.display = spoofed && reboot ? 'block' : 'none';
+
+  setStatus(spoofed ? t('common.done') : t('toast.spoofFailed'));
+  setTimeout(() => showView('post'), 500);
+}
+
+function finishClean(failed, quick) {
+  state.quickMode = false;
+
+  const postTitle = $('postTitle');
+  const postDesc = $('postDesc');
+  const postReboot = $('postReboot');
+
+  if (postTitle) postTitle.textContent = failed ? t('toast.cleanFailed') : t('quick.doneTitle');
+  if (postDesc) postDesc.textContent = quick ? t('post.cleanOnly') : t('post.doneDesc');
+  if (postReboot) postReboot.style.display = 'none';
+
+  setStatus(failed ? `${failed} error(s)` : t('common.done'));
+  setTimeout(() => showView('post'), 400);
+}
+
+async function relaunchAdmin() {
+  const result = await api.relaunchAdmin();
+
+  if (!result?.ok) {
+    toast(t('toast.error'), result?.error || t('admin.desc'), [{ label: t('common.ok'), type: 'danger' }], 8000);
+    return;
+  }
+
+  closeModal('adminModal');
+  closeModal('helpModal');
+  setStatus('Restarting...');
+}
+
+function closeAdmin() {
+  closeModal('adminModal');
+  planCleanupAndShow(false);
+}
+
+function openHelp(isWelcome = false) {
+  const title = $('helpTitle');
+  if (title) title.textContent = isWelcome ? t('help.welcome') : t('help.title');
+  openModal('helpModal');
+}
+
+function closeHelp() {
+  closeModal('helpModal');
+
+  if (state.config && !state.config.onboardingDone) {
+    state.config.onboardingDone = true;
+    api.setConfig({ onboardingDone: true });
+  }
+}
+
+async function applyRecommended() {
+  const result = await api.setConfig({
+    launcherType: 'default',
+    weblauncherDir: null,
+    spoofMode: 'simple',
+    minimizeClose: true,
+    useTrash: true,
+    autoCleanOnExit: false,
+    quickSpoof: true,
+    watcherEnabled: true,
+    preserveSettings: true,
+    preserveFastflags: false,
+    deleteStudio: false,
+    purgeAuth: true,
+    restorePoint: false,
+    spoofTargets: { mac: true, hwid: true, volume: false }
+  });
+
+  if (result?.ok) {
+    state.config = result.config;
+    loadSettingsUI();
+    toast(t('toast.saved'), t('toast.recommended'));
+  }
 }
 
 async function refreshBackupStatus() {
@@ -730,32 +967,7 @@ function executeConfirm() {
 // --- cleanup --------------------------------------------------------------
 
 async function startScan() {
-  if (state.busy) return;
-  if (state.config.launcherType === 'weao' && !state.config.weblauncherDir) {
-    showView('settings');
-    toast(t('toast.error'), 'Select the WebLauncher folder first');
-    return;
-  }
-
-  state.busy = true;
-  setStatus('Scanning...');
-
-  try {
-    const result = await api.planCleanup({ weblauncherDir: state.config.weblauncherDir });
-    const plan = result?.plan;
-
-    if (!plan || !plan.steps?.length) {
-      toast(t('plan.title'), t('plan.empty'));
-      return;
-    }
-
-    state.plan = plan;
-    renderPlan(plan);
-    openModal('planModal');
-  } finally {
-    state.busy = false;
-    setStatus(t('home.status.ready'));
-  }
+  await planCleanupAndShow(false);
 }
 
 function renderPlan(plan) {
@@ -826,6 +1038,7 @@ function renderPlan(plan) {
 }
 
 async function confirmClean() {
+  const quick = state.quickMode;
   closeModal('planModal');
   showView('loader');
 
@@ -845,8 +1058,12 @@ async function confirmClean() {
 
   if (result?.ok && result.result) {
     const failed = result.result.failed?.length || 0;
-    setStatus(failed ? `${failed} error(s)` : t('common.done'));
-    setTimeout(() => showView('post'), 500);
+
+    if (quick && state.config.quickSpoof && failed === 0) {
+      await quickSpoofStep();
+    } else {
+      finishClean(failed, quick);
+    }
   } else {
     const titleNode = $('loaderTitle');
     if (titleNode) {
@@ -1086,6 +1303,12 @@ const actions = {
   'show-view': (element) => showView(element.dataset.arg),
   'hide-window': () => api.hideWindow(),
   'start-scan': () => startScan(),
+  'quick-start': () => quickStart(),
+  'relaunch-admin': () => relaunchAdmin(),
+  'open-help': () => openHelp(false),
+  'close-help': () => closeHelp(),
+  'close-admin': () => closeAdmin(),
+  'apply-recommended': () => applyRecommended(),
   'open-spoof': () => showView('mac'),
   'open-restore': () => openRestore(),
   revert: () => revert(),
@@ -1233,9 +1456,19 @@ function bindEvents() {
     if (title && data.status) title.textContent = data.status.charAt(0).toUpperCase() + data.status.slice(1);
   });
 
-  api.onSpoofLog((data) => mlog(data.message, data.level === 'error' ? 'var(--bad)' : data.level === 'success' ? 'var(--good)' : '#aaa'));
+  api.onSpoofLog((data) => {
+    const color = data.level === 'error' ? 'var(--bad)' : data.level === 'success' ? 'var(--good)' : '#aaa';
+    if (state.logTarget === 'loader') appendLoaderLog(data.level, data.message);
+    else mlog(data.message, color);
+  });
+
   api.onSpoofProgress((data) => {
-    if (data?.step) setStatus(`${data.step}: ${data.status}`);
+    if (!data?.step) return;
+    setStatus(`${data.step}: ${data.status}`);
+    if (state.logTarget === 'loader') {
+      const bar = $('loaderBar');
+      if (bar) bar.style.width = data.status === 'done' ? '90%' : '70%';
+    }
   });
 
   api.onUpdateProgress((data) => {
@@ -1285,10 +1518,15 @@ async function init() {
   toggleAllAdapters();
   setStatus(t('home.status.ready'));
 
-  await Promise.all([refreshBackupStatus(), loadAdapters(false)]);
+  await Promise.all([refreshBackupStatus(), loadAdapters(false), refreshHealth()]);
   await refreshProfiles();
   checkUpdates();
-  showWelcomeToasts();
+
+  if (!state.config.onboardingDone) {
+    setTimeout(() => openHelp(true), 400);
+  } else {
+    showWelcomeToasts();
+  }
 }
 
 init().catch((error) => {

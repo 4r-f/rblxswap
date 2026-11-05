@@ -9,9 +9,21 @@ const APP_NAME = 'rblxswap';
 const APP_ID = 'com.rblxswap.utility';
 const APP_VERSION_FALLBACK = '0.4.0';
 
-// The updater used to point at focat69/rblxswap, which is now a 404. Repo is
-// configurable via config.updates.repo and RBLXSWAP_UPDATE_REPO.
-const DEFAULT_UPDATE_REPO = process.env.RBLXSWAP_UPDATE_REPO || 'hackyue/rblxswap';
+// The updater used to point at focat69/rblxswap, which is now a 404.
+// Priority: RBLXSWAP_UPDATE_REPO env > package.json repository > fallback.
+function repoFromPackage() {
+  try {
+    const pkg = require('../../package.json');
+    const url = typeof pkg.repository === 'string' ? pkg.repository : pkg.repository?.url;
+    const match = String(url || '').match(/github\.com[/:]([^/]+)\/([^/.]+)/i);
+    if (match) return `${match[1]}/${match[2]}`;
+  } catch (error) {
+    // Packaged without a repository field.
+  }
+  return 'hackyue/rblxswap';
+}
+
+const DEFAULT_UPDATE_REPO = process.env.RBLXSWAP_UPDATE_REPO || repoFromPackage();
 
 const ROBLOX_PROCESS_NAMES = [
   'RobloxPlayerBeta.exe',
