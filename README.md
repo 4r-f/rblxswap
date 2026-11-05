@@ -23,8 +23,9 @@
 | **Volume serial** | Optionally patches the VSN field in the boot sector (512e and 4Kn aware, BitLocker aware, hash-verified backup). |
 | **Backup / restore** | Everything is snapshotted to `backup.json` before the first write; selective restore from the UI. |
 
-## What's new in v0.5
+## What's new in v0.6
 
+- **Automatic mode**: open the exe as administrator and it cleans + spoofs after a 5-second countdown. Cancel anytime; `--auto` forces it, and Settings can create a desktop auto shortcut.
 - **One-click setup**: cleans traces, then rotates MAC + hardware IDs with safe defaults. No settings required.
 - **First-run guide**: a 3-step help screen, plain-language labels, health chips (admin / Roblox / backup) and “Restart as administrator”.
 - **Dry-run preview**: nothing is deleted before you see the file count, size, admin requirements and warnings.
@@ -42,12 +43,12 @@
 
 ## Usage
 
-1. Download the latest `rblxswap.exe` from Releases and run it as administrator.
-2. Click **One-click setup**. Review the summary and confirm.
-3. Wait for the progress bar. If the disk serial changed, restart Windows.
-4. Use **Revert spoof & restore identifiers** to restore from the backup.
+1. Download the latest `rblxswap.exe` from Releases and run it (Windows asks for administrator rights automatically).
+2. First launch: read the 3-step guide. After that, **automatic mode** starts on launch with a 5-second cancel countdown.
+3. Or click **One-click setup** manually. Review the summary and confirm.
+4. If the disk serial changed, restart Windows. Use **Revert spoof & restore identifiers** to restore from the backup.
 
-Advanced users can still run **Clean only** / **Spoof only** or the CLI.
+Advanced users can still run **Clean only** / **Spoof only**, create a desktop auto shortcut, or use the CLI (`--auto` forces automatic mode).
 
 ## CLI
 

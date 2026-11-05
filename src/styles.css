@@ -1192,3 +1192,12 @@ button.sys-btn:hover { transform: none; background: var(--sys-hover); }
     font-weight: 700;
     color: var(--text-dim);
 }
+
+.auto-count {
+    font-size: 2.4rem;
+    font-weight: 700;
+    color: var(--good);
+    line-height: 1.1;
+    margin: 6px 0 10px 0;
+}
+#autoModal .modal-card p { margin-bottom: 14px; }

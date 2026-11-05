@@ -18,6 +18,7 @@ contextBridge.exposeInMainWorld('launcher', {
   getAppInfo: () => invoke('app:info'),
   getHealth: () => invoke('app:health'),
   relaunchAdmin: () => invoke('app:relaunch-admin'),
+  createShortcut: () => invoke('app:create-shortcut'),
   getConfig: () => invoke('config:get'),
   setConfig: (config) => invoke('config:set', config),
   resetConfig: () => invoke('config:reset'),

@@ -195,6 +195,20 @@ app.whenReady().then(async () => {
   if (quick.view !== 'view_post') fail(`one-click flow did not reach the final screen (${quick.view})`);
   if (!/ready/i.test(quick.title || '')) fail(`final screen title wrong (${quick.title})`);
 
+  const auto = await window.webContents.executeJavaScript(`(async () => {
+    window.autoRun();
+    await new Promise((resolve) => setTimeout(resolve, 7000));
+    return {
+      view: document.querySelector('.view.active')?.id,
+      title: document.getElementById('postTitle')?.textContent,
+      modal: document.getElementById('autoModal').style.display
+    };
+  })()`);
+
+  console.log('AUTO', JSON.stringify(auto));
+  if (auto.view !== 'view_post') fail(`auto mode did not reach the final screen (${auto.view})`);
+  if (auto.modal !== 'none') fail(`auto countdown did not close (${auto.modal})`);
+
   const translated = await window.webContents.executeJavaScript(`(() => {
     window.setLanguage ? window.setLanguage('tr') : null;
     return document.querySelector('[data-i18n="home.title"]')?.textContent || null;

@@ -117,6 +117,27 @@ function createIpc({
     };
   }));
 
+  ipcMain.handle('app:create-shortcut', guarded(async () => {
+    if (process.platform !== 'win32') {
+      return { ok: false, error: 'unsupported-platform' };
+    }
+
+    const executable = process.env.PORTABLE_EXECUTABLE_FILE || process.execPath;
+    const target = app.isPackaged ? executable : process.execPath;
+    const args = app.isPackaged ? '--auto' : `"${app.getAppPath()}" --auto`;
+    const shortcutPath = path.join(app.getPath('desktop'), 'rblxswap (Auto).lnk');
+
+    const created = shell.writeShortcutLink(shortcutPath, {
+      target,
+      args,
+      description: 'rblxswap automatic cleanup and spoof',
+      icon: executable,
+      iconIndex: 0
+    });
+
+    return created ? { ok: true, path: shortcutPath } : { ok: false, error: 'write-failed' };
+  }));
+
   ipcMain.handle('app:relaunch-admin', guarded(async () => {
     if (process.platform !== 'win32') {
       return { ok: false, error: 'unsupported-platform' };
@@ -147,6 +168,7 @@ Write-Output 'OK'
       platform: process.platform,
       arch: process.arch,
       isPackaged: app.isPackaged,
+      auto: process.argv.includes('--auto'),
       elevated: process.platform === 'win32' ? await hwid.isElevated() : null,
       config: configStore.get(),
       paths: {

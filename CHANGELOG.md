@@ -3,6 +3,20 @@
 All notable changes to rblxswap are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.6.0] - 2026-11-05
+
+### Added
+
+- **Automatic mode**: when the exe is launched as administrator it shows a 5-second countdown, then cleans traces and rotates MAC + HWID without any further clicks. Cancel is always available.
+- **`--auto` launch flag** and a **desktop auto shortcut** button (`rblxswap (Auto).lnk`) for a true double-click workflow.
+- `autoRun` setting (default on) to control the launch behaviour.
+- Smoke coverage for the countdown auto flow.
+
+### Changed
+
+- The portable exe still requests administrator rights via its manifest, so Windows shows the UAC prompt automatically.
+- First launch still shows the 3-step guide; automatic mode starts from the second launch (or immediately with `--auto`).
+
 ## [0.5.0] - 2026-11-05
 
 ### Added

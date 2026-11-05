@@ -4,7 +4,8 @@
 
 | Version | Supported |
 |---|---|
-| 0.5.x | ✅ |
+| 0.6.x | ✅ |
+| 0.5.x | ✅ (no automatic mode) |
 | 0.4.x | ✅ (security fixes, no one-click UI) |
 | < 0.4 | ❌ (no update verification, arbitrary URL updater, inline JS) |
 

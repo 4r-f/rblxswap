@@ -25,7 +25,9 @@ const state = {
   busy: false,
   health: null,
   quickMode: false,
-  logTarget: 'mac'
+  logTarget: 'mac',
+  autoActive: false,
+  autoTimer: null
 };
 
 let colorPicker = null;
@@ -273,6 +275,7 @@ function loadSettingsUI() {
   bind('chkUseTrash', config.useTrash !== false);
   bind('chkAutoClean', config.autoCleanOnExit);
   bind('chkQuickSpoof', config.quickSpoof !== false);
+  bind('chkAutoRun', config.autoRun !== false);
   bind('chkWatcher', config.watcherEnabled !== false);
   bind('chkPreserveSettings', config.preserveSettings);
   bind('chkPreserveFastflags', config.preserveFastflags);
@@ -328,6 +331,7 @@ async function saveSettings() {
     useTrash: $('chkUseTrash')?.checked ?? true,
     autoCleanOnExit: $('chkAutoClean')?.checked ?? false,
     quickSpoof: $('chkQuickSpoof')?.checked ?? true,
+    autoRun: $('chkAutoRun')?.checked ?? true,
     watcherEnabled: $('chkWatcher')?.checked ?? true,
     preserveSettings: $('chkPreserveSettings')?.checked ?? false,
     preserveFastflags: $('chkPreserveFastflags')?.checked ?? false,
@@ -778,6 +782,126 @@ async function quickSpoofStep() {
 
   setStatus(spoofed ? t('common.done') : t('toast.spoofFailed'));
   setTimeout(() => showView('post'), 500);
+}
+
+function autoRun() {
+  if (state.busy || state.autoActive) return;
+  state.autoActive = true;
+
+  refreshHealth().then((health) => {
+    if (health?.elevated === false) {
+      state.autoActive = false;
+      openModal('adminModal');
+      return;
+    }
+
+    closeModal('helpModal');
+
+    let count = 5;
+    const countElement = $('autoCount');
+    const descElement = $('autoDesc');
+
+    const render = () => {
+      if (countElement) countElement.textContent = String(count);
+      if (descElement) descElement.textContent = `${t('auto.starting')} ${count}`;
+    };
+
+    render();
+    openModal('autoModal');
+    clearInterval(state.autoTimer);
+
+    state.autoTimer = setInterval(() => {
+      count -= 1;
+
+      if (count <= 0) {
+        clearInterval(state.autoTimer);
+        state.autoTimer = null;
+        state.autoActive = false;
+        closeModal('autoModal');
+        startAutoFlow();
+        return;
+      }
+
+      render();
+    }, 1000);
+  }).catch(() => {
+    state.autoActive = false;
+  });
+}
+
+function cancelAuto() {
+  clearInterval(state.autoTimer);
+  state.autoTimer = null;
+  state.autoActive = false;
+  closeModal('autoModal');
+  toast(t('auto.title'), t('auto.cancelled'));
+  showView('home');
+}
+
+async function startAutoFlow() {
+  if (state.busy) return;
+
+  state.busy = true;
+  state.quickMode = true;
+  showView('loader');
+
+  const title = $('loaderTitle');
+  const desc = $('loaderDesc');
+  const bar = $('loaderBar');
+  const log = $('loaderLog');
+  if (title) {
+    title.textContent = t('auto.title');
+    title.style.color = 'var(--text-main)';
+  }
+  if (desc) desc.textContent = t('auto.running');
+  if (bar) bar.style.width = '0%';
+  if (log) log.textContent = '';
+
+  try {
+    const planResult = await api.planCleanup({ weblauncherDir: state.config.weblauncherDir });
+    if (!planResult?.plan?.steps?.length) {
+      toast(t('plan.title'), t('plan.empty'));
+      showView('home');
+      state.busy = false;
+      return;
+    }
+
+    state.plan = planResult.plan;
+    const result = await api.runCleanup({});
+
+    if (!result?.ok || !result.result) {
+      if (title) {
+        title.textContent = t('toast.cleanFailed');
+        title.style.color = 'var(--bad)';
+      }
+      toast(t('toast.cleanFailed'), result?.error || t('toast.error'), [{ label: t('common.ok'), type: 'danger' }], 8000);
+      setTimeout(() => showView('home'), 2500);
+      return;
+    }
+
+    const failed = result.result.failed?.length || 0;
+    if (state.config.quickSpoof && failed === 0) {
+      await quickSpoofStep();
+    } else {
+      finishClean(failed, true);
+    }
+  } catch (error) {
+    if (title) title.textContent = t('toast.error');
+    toast(t('toast.error'), error.message || t('toast.error'), [{ label: t('common.ok'), type: 'danger' }], 8000);
+    setTimeout(() => showView('home'), 2500);
+  } finally {
+    state.busy = false;
+  }
+}
+
+async function createShortcut() {
+  const result = await api.createShortcut();
+
+  if (result?.ok) {
+    toast(t('toast.shortcut'), result.path || '', [{ label: t('common.ok'), type: 'primary' }], 7000);
+  } else {
+    toast(t('toast.error'), result?.error || t('common.unsupported'), [{ label: t('common.ok'), type: 'danger' }], 7000);
+  }
 }
 
 function finishClean(failed, quick) {
@@ -1311,6 +1435,8 @@ const actions = {
   'close-help': () => closeHelp(),
   'close-admin': () => closeAdmin(),
   'apply-recommended': () => applyRecommended(),
+  'cancel-auto': () => cancelAuto(),
+  'create-shortcut': () => createShortcut(),
   'open-spoof': () => showView('mac'),
   'open-restore': () => openRestore(),
   revert: () => revert(),
@@ -1524,8 +1650,14 @@ async function init() {
   await refreshProfiles();
   checkUpdates();
 
-  if (!state.config.onboardingDone) {
+  const forceAuto = state.info?.auto === true;
+
+  if (forceAuto) {
+    setTimeout(() => autoRun(), 400);
+  } else if (!state.config.onboardingDone) {
     setTimeout(() => openHelp(true), 400);
+  } else if (state.config.autoRun !== false) {
+    setTimeout(() => autoRun(), 700);
   } else {
     showWelcomeToasts();
   }

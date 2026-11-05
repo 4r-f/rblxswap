@@ -31,6 +31,7 @@ const DEFAULT_CONFIG = Object.freeze({
   autoCleanOnExit: false,
   watcherEnabled: true,
   quickSpoof: true,
+  autoRun: true,
   onboardingDone: false,
   language: 'en',
   updates: { channel: 'stable', repo: DEFAULT_UPDATE_REPO, allowUnsigned: false },
@@ -124,6 +125,7 @@ function sanitizeConfig(input) {
     autoCleanOnExit: asBoolean(source.autoCleanOnExit, false),
     watcherEnabled: asBoolean(source.watcherEnabled, true),
     quickSpoof: asBoolean(source.quickSpoof, true),
+    autoRun: asBoolean(source.autoRun, true),
     onboardingDone: asBoolean(source.onboardingDone, false),
     language: source.language === 'tr' ? 'tr' : 'en',
     updates: {

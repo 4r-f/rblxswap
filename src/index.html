@@ -109,6 +109,16 @@
     </div>
   </div>
 
+  <!-- automatic mode -->
+  <div id="autoModal" class="modal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="autoTitle">
+    <div class="modal-card">
+      <h2 id="autoTitle" data-i18n="auto.title">Automatic mode</h2>
+      <div id="autoCount" class="auto-count">5</div>
+      <p id="autoDesc" data-i18n="auto.desc">Starting in a few seconds.</p>
+      <button type="button" class="btn-danger" data-action="cancel-auto" data-i18n="auto.cancel">Cancel</button>
+    </div>
+  </div>
+
   <!-- help / onboarding -->
   <div id="helpModal" class="modal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
     <div class="modal-card wide">
@@ -298,6 +308,13 @@
             <div class="switch-row">
               <span data-i18n="settings.quickSpoof">Spoof automatically after cleaning</span>
               <label class="switch"><input type="checkbox" id="chkQuickSpoof"><span class="slider"></span></label>
+            </div>
+            <div class="switch-row">
+              <span data-i18n="settings.autoRun">Run automatically on launch (5s cancel)</span>
+              <label class="switch"><input type="checkbox" id="chkAutoRun"><span class="slider"></span></label>
+            </div>
+            <div class="row tight" style="margin-top:6px">
+              <button type="button" data-action="create-shortcut" data-i18n="settings.shortcut">Create desktop auto shortcut</button>
             </div>
             <div class="switch-row">
               <span data-i18n="settings.watcher">Watch Roblox process</span>
