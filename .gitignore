@@ -2,3 +2,11 @@ dist
 node_modules
 src/old*.*
 backup.json
+.npm-cache
+coverage
+*.log
+.DS_Store
+.electron-cache
+.electron-dist
+.electron-dist.zip
+.smoke-data

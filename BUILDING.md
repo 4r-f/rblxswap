@@ -1,32 +1,68 @@
 <div align="center">
-  <img src="assets/rblxswap_banner.png"/>
+  <img src="assets/rblxswap_banner.png" alt="rblxswap banner"/>
 </div>
 
 ---
 
-<p align="center">
-  building from source
-</p>
+<p align="center">Building from source</p>
 
 ---
 
-### ![terminal](https://www.readmecodegen.com/api/social-icon?name=terminal&size=16&color=%238b5cf6) environment setup
+## Requirements
 
-1. install [node.js](https://nodejs.org/) (v18 or higher recommended)
-2. ensure you have `electron-builder` installed. if it's your first time:
-```bash
-npm install -g electron-builder
-```
-3. run `npm install` inside the directory to ensure all dependencies are installed
+- Windows 10/11 x64 (the build itself can run on any OS that supports Electron, but the app is Windows-only)
+- Node.js 20+
+- npm 10+
 
-### ![play](https://www.readmecodegen.com/api/social-icon?name=play&size=16&color=%238b5cf6) compilation steps
+## Setup
 
-because we added the `build` directive in `package.json`, you can simply run:
 ```bash
-npx electron-builder --win
+npm ci
 ```
-or you can run the `build.bat` script
+
+`electron` and `electron-builder` are pinned in `package.json`; no global installs are required.
+
+## Checks
+
 ```bash
-.\build.bat
+npm run lint       # syntax, CSP, security flags, no http://
+npm test           # 36 unit tests (node:test)
+npm run check      # both
 ```
-this produces a portable executable in the `dist` folder, as well as the unpacked version of it in `dist/win-unpacked`
+
+## Build
+
+```bash
+npm run build        # portable exe -> dist/rblxswap.exe
+npm run build:dir    # unpacked build  -> dist/win-unpacked
+```
+
+`build.bat` is a convenience wrapper that elevates and runs the same command.
+
+## Release
+
+1. Bump the version in `package.json` (`npm version 0.4.1 --no-git-tag-version`).
+2. Commit and tag: `git tag v0.4.1 && git push --tags`.
+3. `.github/workflows/release.yml` builds the portable exe, writes `SHA256SUMS.txt` and attaches both to the GitHub release.
+4. The in-app updater verifies the checksum before running the new executable.
+
+### Code signing
+
+Set repository secrets `WIN_CSC_LINK` (base64 PFX or file URL) and `WIN_CSC_KEY_PASSWORD`.
+Without them the build is unsigned and the updater will reject it unless *Allow unsigned updates* is enabled.
+
+## Project layout
+
+```
+main.js                 bootstrap only
+hwid.js                 HWID / volume engine
+preload.js              contextBridge API
+preload-toast.js        toast button bridge
+src/main/*              app, ipc, cleaner, adapters, updater, spoof, toasts, cli
+src/shared/*            config, security, paths, logging, PowerShell helper
+src/renderer/*.mjs      UI modules (ES modules, no inline JS)
+src/index.html          UI
+src/styles.css          styles
+test/*.test.js          unit + UI contract tests
+scripts/lint.js         zero-dependency lint
+```

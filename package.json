@@ -1,26 +1,34 @@
 {
   "name": "rblxswap-launcher",
-  "version": "0.3.0",
-  "description": "Swap between alts whilst evading Roblox's BanAsync API.",
+  "version": "0.4.0",
+  "description": "Swap between alts while reducing Roblox device fingerprinting.",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "dev": "electronmon ."
+    "dev": "electronmon .",
+    "test": "node --test",
+    "lint": "node scripts/lint.js",
+    "check": "npm run lint && npm test",
+    "build": "electron-builder --win --x64",
+    "build:dir": "electron-builder --win --x64 --dir",
+    "release": "electron-builder --win --x64 --publish never"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
-  "author": "",
+  "author": "focat69 and rblxswap contributors",
   "license": "MIT",
   "build": {
     "appId": "com.rblxswap.utility",
+    "asar": true,
     "files": [
       "package.json",
       "main.js",
+      "hwid.js",
       "preload.js",
       "preload-toast.js",
-      "hwid.js",
       "icon.ico",
+      "LICENSE",
       "src/**/*",
       "assets/**/*"
     ],
@@ -36,6 +44,7 @@
   },
   "devDependencies": {
     "electron": "^30.0.0",
+    "electron-builder": "^26.0.12",
     "electronmon": "^2.0.2"
   }
 }
